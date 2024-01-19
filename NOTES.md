@@ -20,3 +20,15 @@ come from https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/
 using high-precision where possible. 
 
 Comment files are available as well. 
+
+# SPK files
+
+Where?
+
+# Mission files
+
+here: https://naif.jpl.nasa.gov/naif/data_lunar.html
+
+look for cadre eventually!
+
+Also, you can get SPK kernels for planets here: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/

@@ -3,6 +3,7 @@ Moon Time
 What time is it where CADRE will land?
 
 Uses - [rust-spice](https://github.com/GregoireHENRY/rust-spice)
+And - [NAIF giant shoulders](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/spk.html#If%20you're%20in%20a%20hurry)
 
 API:
 
@@ -16,3 +17,4 @@ TODO:
 - [ ] implement "see sky" instrument kernel
 - [ ] implement "where is cadre" e.g., what crater / location
 - [ ] AWS / jodavaho endpoint
+- [ ] include kernels in binary using `include_dir` crate
