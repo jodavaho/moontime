@@ -11,15 +11,15 @@ async fn main() {
 
     //let mut tlskernel = spice::furnsh("./latest_leapseconds.tls");
     let sl = SpiceLock::try_acquire().unwrap();
-    sl.furnsh("./latest_leapseconds.tls");
-    //sl.furnsh("./earth_latest_high_prec.bpc");
-    //sl.furnsh("./earth_fixed.tf");
-    sl.furnsh("./de440.bsp");
-    //sl.furnsh("./moon_080317.tf");
-    //sl.furnsh("./moon_assoc_me.tf");
-    //sl.furnsh("./moon_assoc_pa.tf");
-    sl.furnsh("./moon_pa_de440_200625.bpc");
-    sl.furnsh("./moon_de440_220930.tf");
+    sl.furnsh("data/latest_leapseconds.tls");
+    //sl.furnsh("data/earth_fixed.tf");
+    sl.furnsh("data/de440.bsp");
+    //sl.furnsh("data/moon_080317.tf");
+    //sl.furnsh("data/moon_assoc_me.tf");
+    //sl.furnsh("data/moon_assoc_pa.tf");
+    //sl.furnsh("data/earth_latest_high_prec.bpc");
+    sl.furnsh("data/moon_pa_de440_200625.bpc");
+    sl.furnsh("data/moon_de440_220930.tf");
 
     let tlskernel = 
         Arc::new(Mutex::new(sl));
@@ -43,6 +43,8 @@ async fn main() {
         .or(solar_time)
         .or(et_time)
         ;
+
+    get_solar_time(Arc::clone(&tlskernel)).await.unwrap();
 
     println!("Starting server at 127.0.0.1");
     warp::serve(routes)
@@ -109,7 +111,7 @@ async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl
         let et_c = et as f64;
         let body_c = 301 as i32;
         let lon_c = -59 as f64;
-        let type_c = "PLANETOGRAPHIC\0".as_ptr() as *mut i8;
+        let type_c = "PLANETOCENTRIC\0".as_ptr() as *mut i8;
         const TIMLEN_C:i32 = 256 as i32;
         const AMPMLEN_C:i32 = 256 as i32;
         let hr_c = 0 as *mut i32;
