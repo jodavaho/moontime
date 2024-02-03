@@ -14,11 +14,47 @@ async fn readme( ) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(format!(
 "Some spice web services related to my favorite space missions.
 
-/et - returns the ephemeris time for the current time or a time specified in the t parameter.
-      * t = e.g., '2021-10-01T12:00:00' is a string in RFC3339 format.
-      * f = [json|None] is the format of the response. json returns extra information. If not specified, the response is a string.
+-----------------------------------------------------------------------------------------------
 
-/cadre/solar_time - returns the solar time at present, given CADRE's location. Currently, the location is notional. It'll be updated later.
+Endpoints:
+
+/et - returns the ephemeris time for the current time or a time specified in the t parameter.
+
+    OUPUT example: '553333629.1837274'
+
+    QUERY PARAMETERS:
+    * t = optional time. See Input Parameter Information for more information.
+    * f = format of the response. See Output Parameter Information for more information.
+
+/cadre/solartime - returns the solar time at present, given CADRE's location. Currently, the
+location is notional. It'll be updated later.
+
+    OUPUT example: '02:48 AM'
+    
+    QUERY PARAMETERS:
+    * t = optional time. See Input Parameter Information for more information.
+    * f = format of the response. See Output Parameter Information for more information.
+
+-----------------------------------------------------------------------------------------------
+NOTE - all parameters are optional, and all endpoints support methods GET and POST. 
+
+    e.g., curl 'https://api.jodavaho.io/s/et?t=2021-10-01T12%3A00%3A00.00%2B00%3A00'
+    and   curl -X POST 'https://api.jodavaho.io/s/et' -d '{{\"t\":\"2021-10-01T12:00:00.00+00:00\"}}'
+    both return '686361669.1823467'
+-----------------------------------------------------------------------------------------------
+
+Input Parameter Information:
+
+    * t = [ <rfc3339> | None] 
+      if t is not specified, the current time is used.
+      Please use RFC3339 format e.g., '2021-10-01T12:00:00.00+00:00' is valid. 
+
+-----------------------------------------------------------------------------------------------
+
+Output Parameter Information:
+       
+    * f = ['json'| None] is the format of the response. json may return extra information. If not
+      specified, the response is a string representing just the most important payload.
 "
     ))
 }
@@ -43,14 +79,22 @@ async fn main() {
 
     let tlskernel = 
         Arc::new(Mutex::new(sl));
-
+    let test_date:String = "2017-07-14T19:46:00+00:00".to_string();
     //just test them. 
     get_et_time(
-        EtQuery{f:Some(EtFormat::Json), t:Some(Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string())},
+        EtQuery{
+            t:Some(test_date.clone()),
+            f:None, 
+        },
         Arc::clone(&tlskernel)).await.unwrap();
+
+    //desire: 553333629.18372738
+
     get_solar_time(
         Arc::clone(&tlskernel),
-        SolarTimeQuery{t:None}
+        SolarTimeQuery{
+            t:Some(test_date.clone()),
+            f:None}
         ).await.unwrap();
     get_daylight_hours(Arc::clone(&tlskernel)).await.unwrap();
 
@@ -58,6 +102,12 @@ async fn main() {
     let et_time = warp::path!("et")
         .and(warp::get())
         .and(warp::query::<EtQuery>())
+        .and(with_kernel(Arc::clone(&tlskernel)))
+        .and_then(get_et_time);
+
+    let et_post = warp::path!("et")
+        .and(warp::post())
+        .and(warp::body::json())
         .and(with_kernel(Arc::clone(&tlskernel)))
         .and_then(get_et_time);
 
@@ -78,6 +128,7 @@ async fn main() {
     let routes = 
         readme
         .or(et_time)
+        .or(et_post)
         .or(daylight_hours)
         .or(solar_time)
         ;
@@ -99,21 +150,23 @@ enum RetFormat{
     Json,
 }
 fn get_time(t:Option<String>) -> String{
-    match t{
-        Some(t) => {
-            let parsed_time = chrono::DateTime::parse_from_rfc3339(t.as_str());
-            match parsed_time{
-                Ok(dt) => {
-                    dt.timestamp().to_string()
-                },
-                Err(e) => {
-                    eprintln!("Error parsing time: {}", e);
-                    Utc::now().timestamp().to_string()
-                }
-            }
-        }
-        None => Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+
+    if t.is_none(){
+        return Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     }
+    println!("get_time t: {:?}", t);
+
+    //match t.unwrap().parse::<chrono::DateTime<chrono::Utc>>(){
+    match chrono::DateTime::parse_from_rfc3339(t.unwrap().as_str()){
+        Ok(dt) => {
+            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+        },
+        Err(e) => {
+            eprintln!(">>Error parsing time: {}", e);
+            Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+        }
+    }
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -133,8 +186,7 @@ struct EtResponse
 /// f is the format of the response. If not specified, the response is a string.
 /// If f is specified as json, the response is a json object.
 async fn get_et_time(q:EtQuery, sl_mutex: Arc<Mutex<spice::SpiceLock>>) -> Result<impl warp::Reply, warp::Rejection> {
-    println!("f: {:?}", q.f);
-    println!("f: {:?}", q.t);
+    println!("et_time: {:?}", q);
 
     let lock = sl_mutex.lock().unwrap();
 
@@ -178,7 +230,7 @@ struct SolarTimeResponse{
 /*     TIME       O   String giving local time on 24 hour clock */
 /*     AMPM       O   String giving time on A.M./ P.M. scale */
 async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuery ) -> Result<impl warp::Reply, warp::Rejection> {
-    println!("Getting solar time");
+    println!("solar_time: {:?}", q);
     let lock = sl_mutex.lock().unwrap();
 
     let dt = get_time(q.t); 
