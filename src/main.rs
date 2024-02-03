@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
 
+#[allow(dead_code)]
 async fn readme( ) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(format!(
 "Some spice web services related to my favorite space missions.
@@ -62,6 +63,19 @@ Output Parameter Information:
 #[tokio::main]
 async fn main() {
 
+    let cwd = std::env::current_dir().unwrap();
+    println!("Current directory: {:?}", cwd);
+    let cwd_contents = std::fs::read_dir(cwd).unwrap();
+    for entry in cwd_contents {
+        let entry = entry.unwrap();
+        println!("{:?}", entry.path());
+    }
+
+    return
+}
+
+async fn _unused() {
+    let in_lambda = std::env::var("LAMBDA_TASK_ROOT").is_ok();
     //let mut tlskernel = spice::furnsh("./latest_leapseconds.tls");
     let sl = SpiceLock::try_acquire().unwrap();
     sl.furnsh("data/latest_leapseconds.tls");
@@ -133,12 +147,18 @@ async fn main() {
         .or(solar_time)
         ;
 
-    println!("Starting server at 127.0.0.1");
-    warp::serve(routes)
-        .run(([127, 0, 0, 1], 3030))
-        .await;
+    if in_lambda {
+        let warp_service = warp::service(routes);
+        warp_lambda::run(warp_service).await.unwrap();
+    } else {
+        println!("Starting server at 127.0.0.1");
+        warp::serve(routes)
+            .run(([127, 0, 0, 1], 3030))
+            .await;
+    }
 }
 
+#[allow(dead_code)]
 fn with_kernel(sl: Arc<Mutex<spice::SpiceLock>>) -> impl Filter<Extract = (Arc<Mutex<spice::SpiceLock>>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || sl.clone())
 }
@@ -149,6 +169,8 @@ enum RetFormat{
     #[serde(rename = "json")]
     Json,
 }
+
+#[allow(dead_code)]
 fn get_time(t:Option<String>) -> String{
 
     if t.is_none(){
@@ -185,6 +207,7 @@ struct EtResponse
 /// t is a string in RFC3339 format.
 /// f is the format of the response. If not specified, the response is a string.
 /// If f is specified as json, the response is a json object.
+#[allow(dead_code)]
 async fn get_et_time(q:EtQuery, sl_mutex: Arc<Mutex<spice::SpiceLock>>) -> Result<impl warp::Reply, warp::Rejection> {
     println!("et_time: {:?}", q);
 
@@ -229,6 +252,7 @@ struct SolarTimeResponse{
 /*     SC         O   Seconds past the minute */
 /*     TIME       O   String giving local time on 24 hour clock */
 /*     AMPM       O   String giving time on A.M./ P.M. scale */
+#[allow(dead_code)]
 async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuery ) -> Result<impl warp::Reply, warp::Rejection> {
     println!("solar_time: {:?}", q);
     let lock = sl_mutex.lock().unwrap();
@@ -283,6 +307,7 @@ async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuer
 
 }
 
+#[allow(dead_code)]
 async fn get_daylight_hours( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl warp::Reply, warp::Rejection> {
     //https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/29_geometry_finder.pdf
     //or https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/gfsep_c.html
