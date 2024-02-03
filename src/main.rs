@@ -10,10 +10,19 @@ use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
 
-fn to_rad(deg:f64) -> f64
-{
-    deg / 180.0 * PI
+async fn readme( ) -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(format!(
+"Some spice web services related to my favorite space missions.
+
+/et - returns the ephemeris time for the current time or a time specified in the t parameter.
+      * t = e.g., '2021-10-01T12:00:00' is a string in RFC3339 format.
+      * f = [json|None] is the format of the response. json returns extra information. If not specified, the response is a string.
+
+/cadre/solar_time - returns the solar time at present, given CADRE's location. Currently, the location is notional. It'll be updated later.
+"
+    ))
 }
+
 #[tokio::main]
 async fn main() {
 
@@ -37,9 +46,13 @@ async fn main() {
 
     //just test them. 
     get_et_time(
-        EtQuery{f:Some(EtFormat::Json), m:Some(Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string())},
+        EtQuery{f:Some(EtFormat::Json), t:Some(Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string())},
         Arc::clone(&tlskernel)).await.unwrap();
-    get_solar_time(Arc::clone(&tlskernel)).await.unwrap();
+    get_solar_time(
+        Arc::clone(&tlskernel),
+        SolarTimeQuery{t:None}
+        ).await.unwrap();
+    get_daylight_hours(Arc::clone(&tlskernel)).await.unwrap();
 
 
     let et_time = warp::path!("et")
@@ -48,62 +61,108 @@ async fn main() {
         .and(with_kernel(Arc::clone(&tlskernel)))
         .and_then(get_et_time);
 
-    let solar_time = warp::path!("sun")
+    let solar_time = warp::path!("cadre"/"solartime")
         .and(warp::get())
         .and(with_kernel(Arc::clone(&tlskernel)))
+        .and(warp::query::<SolarTimeQuery>())
         .and_then(get_solar_time);
 
-    let readme = warp::path!("readme")
-        .and(warp::fs::file("./README.md"));
+    let daylight_hours = warp::path!("cadre"/"daylight")
+        .and(warp::get())
+        .and(with_kernel(Arc::clone(&tlskernel)))
+        .and_then(get_daylight_hours);
 
-    let routes = readme
-        .or(solar_time)
+    let readme = warp::path!("readme")
+        .and_then(readme);
+
+    let routes = 
+        readme
         .or(et_time)
+        .or(daylight_hours)
+        .or(solar_time)
         ;
 
     println!("Starting server at 127.0.0.1");
     warp::serve(routes)
         .run(([127, 0, 0, 1], 3030))
         .await;
-
-
 }
 
 fn with_kernel(sl: Arc<Mutex<spice::SpiceLock>>) -> impl Filter<Extract = (Arc<Mutex<spice::SpiceLock>>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || sl.clone())
 }
 
-#[derive(Debug, Deserialize)]
-enum EtFormat{
+///////////////////////////////////////////////////////////////////////////////
+#[derive(Debug, Serialize, Deserialize)]
+enum RetFormat{
     #[serde(rename = "json")]
     Json,
 }
+fn get_time(t:Option<String>) -> String{
+    match t{
+        Some(t) => {
+            let parsed_time = chrono::DateTime::parse_from_rfc3339(t.as_str());
+            match parsed_time{
+                Ok(dt) => {
+                    dt.timestamp().to_string()
+                },
+                Err(e) => {
+                    eprintln!("Error parsing time: {}", e);
+                    Utc::now().timestamp().to_string()
+                }
+            }
+        }
+        None => Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 #[derive(Debug, Deserialize)]
 struct EtQuery
 {
-    f: Option<EtFormat>,
-    m: Option<String>,
+    f: Option<RetFormat>,
+    t: Option<String>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 struct EtResponse
 {
     et: f64,
 }
+/// Returns the ephemeris time for the current time or a time specified in the t parameter.
+/// t is a string in RFC3339 format.
+/// f is the format of the response. If not specified, the response is a string.
+/// If f is specified as json, the response is a json object.
 async fn get_et_time(q:EtQuery, sl_mutex: Arc<Mutex<spice::SpiceLock>>) -> Result<impl warp::Reply, warp::Rejection> {
     println!("f: {:?}", q.f);
-    println!("f: {:?}", q.m);
+    println!("f: {:?}", q.t);
+
     let lock = sl_mutex.lock().unwrap();
-    let datestr= chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let et:f64 = lock.str2et(datestr.as_str());
+
+    let dt = get_time(q.t); 
+
+    let et:f64 = lock.str2et(dt.as_str());
     println!("et: {}", et);
     let response :String = match q.f{
-        Some(EtFormat::Json) => {
+        Some(RetFormat::Json) => {
             let er = EtResponse{et};
             serde_json::to_string(&er).unwrap()
         },
         None => {format!("{}", et)},
     };
     Ok(response)
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SolarTimeQuery{
+    f: Option<RetFormat>,
+    t: Option<String>,
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct SolarTimeResponse{
+    solartime: String,
 }
 
 //pub unsafe extern "C" fn et2lst_c( et: f64, body: i32, lon: f64, type_: *mut i8, timlen: i32, ampmlen: i32, hr: *mut i32, mn: *mut i32, sc: *mut i32, time: *mut i8, ampm: *mut i8)
@@ -118,41 +177,31 @@ async fn get_et_time(q:EtQuery, sl_mutex: Arc<Mutex<spice::SpiceLock>>) -> Resul
 /*     SC         O   Seconds past the minute */
 /*     TIME       O   String giving local time on 24 hour clock */
 /*     AMPM       O   String giving time on A.M./ P.M. scale */
-
-
-async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl warp::Reply, warp::Rejection> {
+async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuery ) -> Result<impl warp::Reply, warp::Rejection> {
+    println!("Getting solar time");
     let lock = sl_mutex.lock().unwrap();
-    let datestr= chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    let et:f64 = lock.str2et(datestr.as_str());
+
+    let dt = get_time(q.t); 
+    let et:f64 = lock.str2et(dt.as_str());
+    let result:String;
     unsafe
     {
         let et_c = et as f64;
-        dbg!(et_c);
         let body_c = 301 as i32;
-        dbg!(body_c);
         let lon_c = to_rad(-59_f64) as f64;
-        dbg!(lon_c);
         let type_of_coord = "PLANETOCENTRIC"; 
         let type_c = cstr!(type_of_coord);
-        dbg!(type_c);
         const TIMLEN_C:i32 = 256 as i32;
-        dbg!(TIMLEN_C);
         const AMPMLEN_C:i32 = 256 as i32;
-        dbg!(AMPMLEN_C);
         let mut hr_c:i32 = 0;
         let hr_cp = &mut hr_c as *mut i32;
-        dbg!(hr_c);
         let mut mn_c:i32 = 0;
         let mn_cp = &mut mn_c as *mut i32;
-        dbg!(mn_c);
         let mut sc_c:i32 = 0;
         let sc_cp = &mut sc_c as *mut i32;
-        dbg!(sc_c);
         //make a buffer for the time string
         let mut time_c = [0i8; TIMLEN_C as usize];
-        dbg!(time_c);
         let mut ampm_c = [0i8; AMPMLEN_C as usize];
-        dbg!(ampm_c);
         spice::c::et2lst_c(
             et_c, 
             body_c, 
@@ -168,9 +217,30 @@ async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl
         );
         let time = CStr::from_ptr(time_c.as_ptr()).to_str().unwrap();
         let ampm = CStr::from_ptr(ampm_c.as_ptr()).to_str().unwrap();
-        eprintln!("time: {} {}", time, ampm);
-        eprintln!("DONE!");
+        eprintln!("solar time: {} {}", time, ampm);
         //cleanup
-        Ok("done")
+        result = format!("{}", ampm);
     }
+    match q.f{
+        Some(RetFormat::Json) => {
+            let er = SolarTimeResponse{solartime:result};
+            Ok(serde_json::to_string(&er).unwrap())
+        },
+        None => Ok(format!("{}", result))
+    }
+
+}
+
+async fn get_daylight_hours( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl warp::Reply, warp::Rejection> {
+    //https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/29_geometry_finder.pdf
+    //or https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/gfsep_c.html
+    //spice::c::gfsep_c(
+    let _lock = sl_mutex.lock().unwrap();
+    Ok("solar angle")
+
+}
+
+fn to_rad(deg:f64) -> f64
+{
+    deg / 180.0 * PI
 }
