@@ -1,17 +1,31 @@
-#![deny(warnings)]
-
 use core::ffi::CStr;
-use std::f64::consts::PI;
-use spice::cstr;
-use warp::Filter;
-use spice;
-use spice::SpiceLock;
-use std::sync::{Arc, Mutex};
+use std::{
+    env::set_var,
+    f64::consts::PI,
+    sync::{
+        Arc, 
+        Mutex
+    },
+};
+use spice::{
+    cstr,
+    SpiceLock,
+};
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
+use axum::{
+    routing::get,
+    extract::State,
+    extract::Query,
+    Router,
+};
+use lambda_http::{
+    run ,Error
+};
 
 #[allow(dead_code)]
-async fn readme( ) -> Result<impl warp::Reply, warp::Rejection> {
+async fn readme( ) -> Result<String, String>
+{
     Ok(format!(
 "Some spice web services related to my favorite space missions.
 
@@ -31,7 +45,7 @@ Endpoints:
 location is notional. It'll be updated later.
 
     OUPUT example: '02:48 AM'
-    
+
     QUERY PARAMETERS:
     * t = optional time. See Input Parameter Information for more information.
     * f = format of the response. See Output Parameter Information for more information.
@@ -53,15 +67,30 @@ Input Parameter Information:
 -----------------------------------------------------------------------------------------------
 
 Output Parameter Information:
-       
+
     * f = ['json'| None] is the format of the response. json may return extra information. If not
       specified, the response is a string representing just the most important payload.
 "
-    ))
+))
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error>
+{
+
+    set_var("AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH", "true");
+
+    for (key, value) in std::env::vars() {
+        println!("{}: {}", key, value);
+    }
+
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        // disable printing the name of the module in every log line.
+        .with_target(false)
+        // disabling time is handy because CloudWatch will add the ingestion time.
+        .without_time()
+        .init();
 
     let cwd = std::env::current_dir().unwrap();
     println!("Current directory: {:?}", cwd);
@@ -71,11 +100,9 @@ async fn main() {
         println!("{:?}", entry.path());
     }
 
-    return
-}
 
-async fn _unused() {
     let in_lambda = std::env::var("LAMBDA_TASK_ROOT").is_ok();
+
     //let mut tlskernel = spice::furnsh("./latest_leapseconds.tls");
     let sl = SpiceLock::try_acquire().unwrap();
     sl.furnsh("data/latest_leapseconds.tls");
@@ -93,74 +120,36 @@ async fn _unused() {
 
     let tlskernel = 
         Arc::new(Mutex::new(sl));
-    let test_date:String = "2017-07-14T19:46:00+00:00".to_string();
-    //just test them. 
-    get_et_time(
-        EtQuery{
-            t:Some(test_date.clone()),
-            f:None, 
-        },
-        Arc::clone(&tlskernel)).await.unwrap();
 
-    //desire: 553333629.18372738
+    let _test_date:String = "2017-07-14T19:46:00+00:00".to_string();
 
-    get_solar_time(
-        Arc::clone(&tlskernel),
-        SolarTimeQuery{
-            t:Some(test_date.clone()),
-            f:None}
-        ).await.unwrap();
-    get_daylight_hours(Arc::clone(&tlskernel)).await.unwrap();
+    let app : Router
+        = Router::new()
+        .route("/s/et", get(get_et_time))
+        .route("/s/cadre/solartime", get(get_solar_time))
+        //.route("/cadre/daylighthours", get(get_daylight_hours))
+        .route("/s/readme", get(readme))
+        .with_state(tlskernel);
 
-
-    let et_time = warp::path!("et")
-        .and(warp::get())
-        .and(warp::query::<EtQuery>())
-        .and(with_kernel(Arc::clone(&tlskernel)))
-        .and_then(get_et_time);
-
-    let et_post = warp::path!("et")
-        .and(warp::post())
-        .and(warp::body::json())
-        .and(with_kernel(Arc::clone(&tlskernel)))
-        .and_then(get_et_time);
-
-    let solar_time = warp::path!("cadre"/"solartime")
-        .and(warp::get())
-        .and(with_kernel(Arc::clone(&tlskernel)))
-        .and(warp::query::<SolarTimeQuery>())
-        .and_then(get_solar_time);
-
-    let daylight_hours = warp::path!("cadre"/"daylight")
-        .and(warp::get())
-        .and(with_kernel(Arc::clone(&tlskernel)))
-        .and_then(get_daylight_hours);
-
-    let readme = warp::path!("readme")
-        .and_then(readme);
-
-    let routes = 
-        readme
-        .or(et_time)
-        .or(et_post)
-        .or(daylight_hours)
-        .or(solar_time)
-        ;
-
-    if in_lambda {
-        let warp_service = warp::service(routes);
-        warp_lambda::run(warp_service).await.unwrap();
+    if in_lambda{
+        println!("Running in AWS Lambda");
+        std::env::set_var("AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH", "true");
+        run(app).await
     } else {
-        println!("Starting server at 127.0.0.1");
-        warp::serve(routes)
-            .run(([127, 0, 0, 1], 3030))
-            .await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
+        match axum::serve(listener,app).await
+        {
+            Ok(_) => {
+                println!("Server started on port 3000");
+                Ok(())
+            },
+            Err(e) => {
+                eprintln!("Error starting server: {}", e);
+                Err(Error::from(e))
+            }
+        }
     }
-}
 
-#[allow(dead_code)]
-fn with_kernel(sl: Arc<Mutex<spice::SpiceLock>>) -> impl Filter<Extract = (Arc<Mutex<spice::SpiceLock>>,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || sl.clone())
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -208,7 +197,12 @@ struct EtResponse
 /// f is the format of the response. If not specified, the response is a string.
 /// If f is specified as json, the response is a json object.
 #[allow(dead_code)]
-async fn get_et_time(q:EtQuery, sl_mutex: Arc<Mutex<spice::SpiceLock>>) -> Result<impl warp::Reply, warp::Rejection> {
+    async fn get_et_time(
+        State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+        Query(q): Query<EtQuery>,
+        )
+         -> Result<String, ()>
+{
     println!("et_time: {:?}", q);
 
     let lock = sl_mutex.lock().unwrap();
@@ -253,7 +247,11 @@ struct SolarTimeResponse{
 /*     TIME       O   String giving local time on 24 hour clock */
 /*     AMPM       O   String giving time on A.M./ P.M. scale */
 #[allow(dead_code)]
-async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuery ) -> Result<impl warp::Reply, warp::Rejection> {
+async fn get_solar_time( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(q):Query<SolarTimeQuery> ,
+    ) -> Result<String, ()>
+{
     println!("solar_time: {:?}", q);
     let lock = sl_mutex.lock().unwrap();
 
@@ -282,15 +280,15 @@ async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuer
             et_c, 
             body_c, 
             lon_c,
-			type_c,
-			TIMLEN_C,
-			AMPMLEN_C,
-			hr_cp,
-			mn_cp,
-			sc_cp,
-			time_c.as_mut_ptr(),
-			ampm_c.as_mut_ptr()
-        );
+            type_c,
+            TIMLEN_C,
+            AMPMLEN_C,
+            hr_cp,
+            mn_cp,
+            sc_cp,
+            time_c.as_mut_ptr(),
+            ampm_c.as_mut_ptr()
+            );
         let time = CStr::from_ptr(time_c.as_ptr()).to_str().unwrap();
         let ampm = CStr::from_ptr(ampm_c.as_ptr()).to_str().unwrap();
         eprintln!("solar time: {} {}", time, ampm);
@@ -304,16 +302,6 @@ async fn get_solar_time( sl_mutex: Arc<Mutex<spice::SpiceLock>>, q:SolarTimeQuer
         },
         None => Ok(format!("{}", result))
     }
-
-}
-
-#[allow(dead_code)]
-async fn get_daylight_hours( sl_mutex: Arc<Mutex<spice::SpiceLock>> ) -> Result<impl warp::Reply, warp::Rejection> {
-    //https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/29_geometry_finder.pdf
-    //or https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/gfsep_c.html
-    //spice::c::gfsep_c(
-    let _lock = sl_mutex.lock().unwrap();
-    Ok("solar angle")
 
 }
 

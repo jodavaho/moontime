@@ -18,3 +18,4 @@ TODO:
 - [ ] implement "where is cadre" e.g., what crater / location
 - [ ] AWS / jodavaho endpoint
 - [ ] include kernels in binary using `include_dir` crate
+- [ ] get the heck off `lambda_warp` and just use `lambda_runtime`
