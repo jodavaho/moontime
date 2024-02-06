@@ -17,6 +17,7 @@ use serde::{Serialize, Deserialize};
 use chrono::Utc;
 use axum::{
     routing::get,
+    routing::post,
     extract::State,
     extract::Query,
     Router,
@@ -89,10 +90,14 @@ async fn main() -> Result<(), Error>
     let app : Router
         = Router::new()
         .route("/s/et", get(get_et_time))
+        .route("/s/et", post(get_et_time))
         .route("/s/cadre/solartime", get(cadre_get_solar_time))
+        .route("/s/cadre/solartime", post(cadre_get_solar_time))
         .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
+        .route("/s/cadre/sun/azel", post(cadre_get_solar_azel))
         //.route("/cadre/daylighthours", get(get_daylight_hours))
         .route("/s/readme", get(get_readme))
+        .route("/s/readme", post(get_readme))
         .with_state(tlskernel);
 
     if in_lambda{
@@ -198,18 +203,6 @@ struct SolarTimeResponse{
     solartime: String,
 }
 
-//pub unsafe extern "C" fn et2lst_c( et: f64, body: i32, lon: f64, type_: *mut i8, timlen: i32, ampmlen: i32, hr: *mut i32, mn: *mut i32, sc: *mut i32, time: *mut i8, ampm: *mut i8)
-/*     VARIABLE  I/O  DESCRIPTION */
-/*     --------  ---  -------------------------------------------------- */
-/*     ET         I   Epoch in seconds past J2000 epoch */
-/*     BODY       I   ID-code of the body of interest */
-/*     LON        I   Longitude of surface point (RADIANS) */
-/*     TYPE       I   Type of longitude 'PLANETOCENTRIC', etc. */
-/*     HR         O   Local hour on a "24 hour" clock */
-/*     MN         O   Minutes past the hour */
-/*     SC         O   Seconds past the minute */
-/*     TIME       O   String giving local time on 24 hour clock */
-/*     AMPM       O   String giving time on A.M./ P.M. scale */
 #[allow(dead_code)]
 async fn cadre_get_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
@@ -269,10 +262,33 @@ async fn cadre_get_solar_time(
 
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct LatLonAlt{
+    lat: f64,
+    lon: f64,
+    alt: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CadreSolarAzAlRequest
+{
+    f: Option<RetFormat>,
+    t: Option<String>,
+    pos: Option<LatLonAlt>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CadreSolarAzAlResponse
+{
+    r: f64,
+    az: f64,
+    el: f64,
+}
+
 #[allow(dead_code)]
 async fn cadre_get_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(q):Query<SolarTimeQuery> ,
+    Query(q):Query<CadreSolarAzAlRequest> ,
     ) -> Result<String, ()>
 {
     let lock = sl_mutex.lock().unwrap();
@@ -281,17 +297,6 @@ async fn cadre_get_solar_azel(
     let mut radius = [0.0, 0.0, 0.0];
 
     unsafe{
-
-        /*
-           pub fn bodvrd_c(
-           body: *mut ConstSpiceChar,
-           item: *mut ConstSpiceChar,
-           maxn: SpiceInt,
-           dim: *mut SpiceInt,
-           values: *mut SpiceDouble,
-           );
-           */
-        
         //TODO bodvrd_c should not borrow mutable strings here - can we upstream a fix?
         let mut out_dim: i32 = 0;
         let out_dim_p = &mut out_dim as *mut i32;
@@ -309,21 +314,25 @@ async fn cadre_get_solar_azel(
     println!("et: {}", et);
     let flat = radius[0] - radius[2];
     let flat = flat / radius[0];
-    let mut rect_coord = lock.georec(CADRE_LON_RAD, CADRE_LAT_RAD, 0.0, re, flat);
-    println!("rect_coord: {:?}", rect_coord);
 
-    let method = "ELLIPSOID";
-    let abcorr = "NONE";
+    let pos = match q.pos{
+        Some(p) => p,
+        None => LatLonAlt{lat: CADRE_LAT_RAD, lon: CADRE_LON_RAD, alt: 0.0},
+    };
+
+    println!("pos: {:?}", pos);
+    let mut rect_coord = lock.georec(pos.lon, pos.lat, pos.alt, re, flat);
+    println!("rect_coord: {:?}", rect_coord);
     let mut azlsta = [0.0;6];
     let mut lt = 0.0;
 
     unsafe{
 
         spice::c::azlcpo_c(
-            cstr!(method),
+            cstr!("ELLIPSOID"),
             cstr!("SUN"),
             et,
-            cstr!(abcorr),
+            cstr!("NONE"), //TODO: provide aberration correction
             spice::c::SPICETRUE as i32,
             spice::c::SPICETRUE as i32,
             rect_coord.as_mut_ptr(),
@@ -342,6 +351,18 @@ async fn cadre_get_solar_azel(
              range, 
              azimuth.to_degrees(),
              elevation.to_degrees());
-    Ok("".to_string())
+
+    let response = match q.f{
+        Some(RetFormat::Json) => {
+            let er = CadreSolarAzAlResponse{
+                r:range, 
+                az:azimuth, 
+                el:elevation
+            };
+            serde_json::to_string(&er).unwrap()
+        },
+        None => {format!("{} {} {}", range, azimuth, elevation)},
+    };
+    Ok(response)
 }
 
