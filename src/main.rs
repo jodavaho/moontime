@@ -226,7 +226,7 @@ async fn cadre_get_solar_time(
     {
         let et_c = et as f64;
         let body_c = 301 as i32;
-        let lon_c = to_rad(-59_f64) as f64;
+        let lon_c = -59_f64.to_radians();
         let type_of_coord = "PLANETOCENTRIC"; 
         let type_c = cstr!(type_of_coord);
         const TIMLEN_C:i32 = 256 as i32;
@@ -327,10 +327,7 @@ async fn cadre_get_solar_azel(
             spice::c::SPICETRUE as i32,
             spice::c::SPICETRUE as i32,
             rect_coord.as_mut_ptr(),
-            //TODO, this keeps not being recognized. i think I have the wrong kernels, 
-            //check this: https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/23_lunar-earth_pck-fk.pdf
             cstr!("MOON"),
-            //cstr!("MOON_ME"),
             cstr!("MOON_ME_DE440_ME421"),
             azlsta.as_mut_ptr(),
             &mut lt
@@ -338,10 +335,13 @@ async fn cadre_get_solar_azel(
     }
 
     println!("azlsta: {:?} lt: {:?}", azlsta, lt);
+    let range = azlsta[0];
+    let azimuth = azlsta[1];
+    let elevation = azlsta[2];
+    println!("range: {} azimuth: {} elevation: {}", 
+             range, 
+             azimuth.to_degrees(),
+             elevation.to_degrees());
     Ok("".to_string())
 }
 
-fn to_rad(deg:f64) -> f64
-{
-    deg / 180.0 * PI
-}
