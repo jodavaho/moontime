@@ -1,3 +1,5 @@
+mod readme;
+
 use core::ffi::CStr;
 use std::{
     env::set_var,
@@ -24,55 +26,15 @@ use lambda_http::{
 };
 
 #[allow(dead_code)]
-async fn readme( ) -> Result<String, String>
+async fn get_readme( ) -> Result<String, String>
 {
-    Ok(format!(
-"Some spice web services related to my favorite space missions.
-
------------------------------------------------------------------------------------------------
-
-Endpoints:
-
-/et - returns the ephemeris time for the current time or a time specified in the t parameter.
-
-    OUPUT example: '553333629.1837274'
-
-    QUERY PARAMETERS:
-    * t = optional time. See Input Parameter Information for more information.
-    * f = format of the response. See Output Parameter Information for more information.
-
-/cadre/solartime - returns the solar time at present, given CADRE's location. Currently, the
-location is notional. It'll be updated later.
-
-    OUPUT example: '02:48 AM'
-
-    QUERY PARAMETERS:
-    * t = optional time. See Input Parameter Information for more information.
-    * f = format of the response. See Output Parameter Information for more information.
-
------------------------------------------------------------------------------------------------
-NOTE - all parameters are optional, and all endpoints support methods GET and POST. 
-
-    e.g., curl 'https://api.jodavaho.io/s/et?t=2021-10-01T12%3A00%3A00.00%2B00%3A00'
-    and   curl -X POST 'https://api.jodavaho.io/s/et' -d '{{\"t\":\"2021-10-01T12:00:00.00+00:00\"}}'
-    both return '686361669.1823467'
------------------------------------------------------------------------------------------------
-
-Input Parameter Information:
-
-    * t = [ <rfc3339> | None] 
-      if t is not specified, the current time is used.
-      Please use RFC3339 format e.g., '2021-10-01T12:00:00.00+00:00' is valid. 
-
------------------------------------------------------------------------------------------------
-
-Output Parameter Information:
-
-    * f = ['json'| None] is the format of the response. json may return extra information. If not
-      specified, the response is a string representing just the most important payload.
-"
-))
+    Ok(readme::README.to_string())
 }
+
+const CADRE_LAT:f64 = 7.5;
+const CADRE_LAT_RAD:f64 = CADRE_LAT * PI / 180.0;
+const CADRE_LON:f64 = -59.0;
+const CADRE_LON_RAD:f64 = CADRE_LON * PI / 180.0;
 
 #[tokio::main]
 async fn main() -> Result<(), Error>
@@ -112,8 +74,9 @@ async fn main() -> Result<(), Error>
     //sl.furnsh("data/moon_assoc_me.tf");
     //sl.furnsh("data/moon_assoc_pa.tf");
     //sl.furnsh("data/earth_latest_high_prec.bpc");
+    //sl.furnsh("data/moon_pa_de440_200625.bpc");
     sl.furnsh("data/moon_pa_de440_200625.bpc");
-    sl.furnsh("data/moon_de440_220930.tf");
+    sl.furnsh("data/moon_de440_200625.tf");
     sl.furnsh("data/pck00010.tpc");
 
 
@@ -126,9 +89,10 @@ async fn main() -> Result<(), Error>
     let app : Router
         = Router::new()
         .route("/s/et", get(get_et_time))
-        .route("/s/cadre/solartime", get(get_solar_time))
+        .route("/s/cadre/solartime", get(cadre_get_solar_time))
+        .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
         //.route("/cadre/daylighthours", get(get_daylight_hours))
-        .route("/s/readme", get(readme))
+        .route("/s/readme", get(get_readme))
         .with_state(tlskernel);
 
     if in_lambda{
@@ -247,7 +211,7 @@ struct SolarTimeResponse{
 /*     TIME       O   String giving local time on 24 hour clock */
 /*     AMPM       O   String giving time on A.M./ P.M. scale */
 #[allow(dead_code)]
-async fn get_solar_time( 
+async fn cadre_get_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Query(q):Query<SolarTimeQuery> ,
     ) -> Result<String, ()>
@@ -303,6 +267,78 @@ async fn get_solar_time(
         None => Ok(format!("{}", result))
     }
 
+}
+
+#[allow(dead_code)]
+async fn cadre_get_solar_azel( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(q):Query<SolarTimeQuery> ,
+    ) -> Result<String, ()>
+{
+    let lock = sl_mutex.lock().unwrap();
+    let time = get_time(q.t);
+
+    let mut radius = [0.0, 0.0, 0.0];
+
+    unsafe{
+
+        /*
+           pub fn bodvrd_c(
+           body: *mut ConstSpiceChar,
+           item: *mut ConstSpiceChar,
+           maxn: SpiceInt,
+           dim: *mut SpiceInt,
+           values: *mut SpiceDouble,
+           );
+           */
+        
+        //TODO bodvrd_c should not borrow mutable strings here - can we upstream a fix?
+        let mut out_dim: i32 = 0;
+        let out_dim_p = &mut out_dim as *mut i32;
+        spice::c::bodvrd_c(
+            cstr!("MOON"),
+            cstr!("RADII"),
+            3, 
+            out_dim_p, 
+            radius.as_mut_ptr());
+    }
+
+    let re = radius[0];
+    println!("re: {}", re);
+    let et = lock.str2et(time.as_str());
+    println!("et: {}", et);
+    let flat = radius[0] - radius[2];
+    let flat = flat / radius[0];
+    let mut rect_coord = lock.georec(CADRE_LON_RAD, CADRE_LAT_RAD, 0.0, re, flat);
+    println!("rect_coord: {:?}", rect_coord);
+
+    let method = "ELLIPSOID";
+    let abcorr = "NONE";
+    let mut azlsta = [0.0;6];
+    let mut lt = 0.0;
+
+    unsafe{
+
+        spice::c::azlcpo_c(
+            cstr!(method),
+            cstr!("SUN"),
+            et,
+            cstr!(abcorr),
+            spice::c::SPICETRUE as i32,
+            spice::c::SPICETRUE as i32,
+            rect_coord.as_mut_ptr(),
+            //TODO, this keeps not being recognized. i think I have the wrong kernels, 
+            //check this: https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/Tutorials/pdf/individual_docs/23_lunar-earth_pck-fk.pdf
+            cstr!("MOON"),
+            //cstr!("MOON_ME"),
+            cstr!("MOON_ME_DE440_ME421"),
+            azlsta.as_mut_ptr(),
+            &mut lt
+            );
+    }
+
+    println!("azlsta: {:?} lt: {:?}", azlsta, lt);
+    Ok("".to_string())
 }
 
 fn to_rad(deg:f64) -> f64
