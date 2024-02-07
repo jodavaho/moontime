@@ -218,13 +218,17 @@ async fn cadre_post_solar_azel(
 #[allow(dead_code)]
 async fn cadre_get_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(time): Query<DateTime>,
-    Query(format): Query<FormatSpecifier>,
-    Query(units): Query<UnitSpecifier>,
+    time: Option<Query<DateTime>>,
+    format: Option<Query<FormatSpecifier>>,
+    units: Option<Query<UnitSpecifier>>,
     ) -> Result<String, ()>
 {
 
-    let pos = Position::cadre();
+    let pos = Position::default();
+    let Query(time) = time.unwrap_or_default();
+    let Query(format) = format.unwrap_or_default();
+    let Query(units) = units.unwrap_or_default();
+
     let res = moontime::solar_azel(sl_mutex, time, pos);
     let res = match units{
         UnitSpecifier::Degrees => res.to_degrees(),
