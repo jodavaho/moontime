@@ -1,20 +1,19 @@
 mod readme;
+use moontime::*;
 
-use core::ffi::CStr;
 use std::{
     env::set_var,
-    f64::consts::PI,
     sync::{
         Arc, 
         Mutex
     },
 };
-use spice::{
-    cstr,
-    SpiceLock,
+
+use serde::{
+    Serialize,
+    Deserialize,
 };
-use serde::{Serialize, Deserialize};
-use chrono::Utc;
+use spice::SpiceLock;
 use axum::{
     routing::get,
     routing::post,
@@ -34,11 +33,6 @@ async fn get_readme( ) -> Result<String, String>
 {
     Ok(readme::README.to_string())
 }
-
-const CADRE_LAT:f64 = 7.5;
-const CADRE_LAT_RAD:f64 = CADRE_LAT * PI / 180.0;
-const CADRE_LON:f64 = -59.0;
-const CADRE_LON_RAD:f64 = CADRE_LON * PI / 180.0;
 
 #[tokio::main]
 async fn main() -> Result<(), Error>
@@ -96,9 +90,9 @@ async fn main() -> Result<(), Error>
         .route("/s/et", get(get_et_time))
         .route("/s/et", post(get_et_time))
         .route("/s/cadre/solartime", get(cadre_get_solar_time))
-        .route("/s/cadre/solartime", post(cadre_get_solar_time))
+        .route("/s/cadre/solartime", post(cadre_post_solar_time))
         .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
-        .route("/s/cadre/sun/azel", post(cadre_get_solar_azel))
+        .route("/s/cadre/sun/azel", post(cadre_post_solar_azel))
         //.route("/cadre/daylighthours", get(get_daylight_hours))
         .route("/s/readme", get(get_readme))
         .route("/s/readme", post(get_readme))
@@ -124,46 +118,6 @@ async fn main() -> Result<(), Error>
     }
 
 }
-
-///////////////////////////////////////////////////////////////////////////////
-#[derive(Debug, Serialize, Deserialize)]
-enum RetFormat{
-    #[serde(rename = "json")]
-    Json,
-}
-
-#[allow(dead_code)]
-fn get_time(t:&Option<String>) -> String{
-
-    if t.is_none(){
-        return Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
-    }
-    println!("get_time t: {:?}", t);
-
-    match chrono::DateTime::parse_from_rfc3339(t.clone().unwrap().as_str()){
-        Ok(dt) => {
-            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-        },
-        Err(e) => {
-            println!(">>Error parsing time: {}", e);
-            Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
-        }
-    }
-
-}
-
-///////////////////////////////////////////////////////////////////////////////
-#[derive(Debug, Deserialize)]
-struct EtQuery
-{
-    f: Option<RetFormat>,
-    t: Option<String>,
-}
-#[derive(Debug, Serialize, Deserialize)]
-struct EtResponse
-{
-    et: f64,
-}
 /// Returns the ephemeris time for the current time or a time specified in the t parameter.
 /// t is a string in RFC3339 format.
 /// f is the format of the response. If not specified, the response is a string.
@@ -171,240 +125,114 @@ struct EtResponse
 #[allow(dead_code)]
     async fn get_et_time(
         State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-        Query(q): Query<EtQuery>,
+        Query(t): Query<DateTime>,
+        Query(f): Query<Format>,
         )
          -> Result<String, ()>
 {
-    println!("et_time: {:?}", q);
-
     let lock = sl_mutex.lock().unwrap();
-
-    let dt = get_time(&q.t); 
-
-    let et:f64 = lock.str2et(dt.as_str());
-    println!("et: {}", et);
-    let response :String = match q.f{
-        Some(RetFormat::Json) => {
-            let er = EtResponse{et};
-            serde_json::to_string(&er).unwrap()
-        },
-        None => {format!("{}", et)},
-    };
-    Ok(response)
+    let timestr = t.to_string();
+    let et:f64 = lock.str2et(timestr.as_str());
+    Ok(moontime::format_res(et,f.f))
 }
 
-
-///////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SolarTimeQuery{
-    f: Option<RetFormat>,
-    t: Option<String>,
+#[derive(Serialize, Deserialize, Debug)]
+struct PostSolarTime {
+    t: Option<DateTime>,
+    f: Option<Format>,
+    p: Option<Position>,
 }
-#[derive(Debug, Serialize, Deserialize)]
-struct SolarTimeResponse{
-    solartime: String,
+impl Default for PostSolarTime {
+    fn default() -> Self {
+        PostSolarTime {
+            t: None,
+            f: None,
+            p: None,
+        }
+    }
+}
+async fn cadre_post_solar_time( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    obody: Option<Json<PostSolarTime>>,
+    ) -> Result<String, ()>
+{
+    let Json(body) = obody.unwrap_or_default();
+    let t = body.t.unwrap_or_default();
+    let f = body.f.unwrap_or_default();
+    let p = body.p.unwrap_or_default();
+
+    let result = moontime::solar_time(sl_mutex, t, p.to_radians()).unwrap();
+    Ok(moontime::format_res(result, f.f))
 }
 
 #[allow(dead_code)]
 async fn cadre_get_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(q):Query<SolarTimeQuery> ,
+    t: Option<Query<DateTime>>,
+    f: Option<Query<Format>>,
     ) -> Result<String, ()>
 {
-    println!("solar_time: {:?}", q);
-    let lock = sl_mutex.lock().unwrap();
+    let pos = Position::default();
+    let Query(t) = t.unwrap_or_default();
+    let Query(f) = f.unwrap_or_default();
+    let result = moontime::solar_time(sl_mutex, t, pos).unwrap();
+    Ok(moontime::format_res(result, f.f))
+}
 
-    let dt = get_time(&q.t); 
-    let et:f64 = lock.str2et(dt.as_str());
-    let result:String;
-    unsafe
-    {
-        let et_c = et as f64;
-        let body_c = 301 as i32;
-        let lon_c = -59_f64.to_radians();
-        let type_of_coord = "PLANETOCENTRIC"; 
-        let type_c = cstr!(type_of_coord);
-        const TIMLEN_C:i32 = 256 as i32;
-        const AMPMLEN_C:i32 = 256 as i32;
-        let mut hr_c:i32 = 0;
-        let hr_cp = &mut hr_c as *mut i32;
-        let mut mn_c:i32 = 0;
-        let mn_cp = &mut mn_c as *mut i32;
-        let mut sc_c:i32 = 0;
-        let sc_cp = &mut sc_c as *mut i32;
-        //make a buffer for the time string
-        let mut time_c = [0i8; TIMLEN_C as usize];
-        let mut ampm_c = [0i8; AMPMLEN_C as usize];
-        spice::c::et2lst_c(
-            et_c, 
-            body_c, 
-            lon_c,
-            type_c,
-            TIMLEN_C,
-            AMPMLEN_C,
-            hr_cp,
-            mn_cp,
-            sc_cp,
-            time_c.as_mut_ptr(),
-            ampm_c.as_mut_ptr()
-            );
-        let time = CStr::from_ptr(time_c.as_ptr()).to_str().unwrap();
-        let ampm = CStr::from_ptr(ampm_c.as_ptr()).to_str().unwrap();
-        println!("solar time: {} {}", time, ampm);
-        //cleanup
-        result = format!("{}", ampm);
+#[derive(Serialize, Deserialize, Debug)]
+struct CadrePostSolarAzel {
+    time: Option<DateTime>,
+    format: Option<FormatSpecifier>,
+    units: Option<UnitSpecifier>,
+    pos: Option<Position>,
+}
+impl Default for CadrePostSolarAzel {
+    fn default() -> Self {
+        CadrePostSolarAzel {
+            time: None,
+            format: None,
+            units: None,
+            pos: None,
+        }
     }
-    match q.f{
-        Some(RetFormat::Json) => {
-            let er = SolarTimeResponse{solartime:result};
-            Ok(serde_json::to_string(&er).unwrap())
-        },
-        None => Ok(format!("{}", result))
-    }
-
 }
 
-#[derive(Debug, Serialize, Deserialize,Copy,Clone)]
-struct LatLonAlt{
-    lat: f64,
-    lon: f64,
-    alt: f64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct CadreSolarAzAlRequest
+async fn cadre_post_solar_azel( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    obody: Option<Json<CadrePostSolarAzel>>,
+    ) -> Result<String, ()>
 {
-    f: Option<RetFormat>,
-    t: Option<String>,
-    radians: Option<bool>,
-    pos: Option<LatLonAlt>,
-}
+    let body = obody.unwrap_or_default();
+    let time = body.time.unwrap_or_default();
+    let format = body.format.unwrap_or_default();
+    let units = body.units.unwrap_or_default();
+    let pos = body.pos.unwrap_or_default();
 
-#[derive(Debug, Serialize, Deserialize)]
-struct CadreSolarAzAlResponse
-{
-    r: f64,
-    az: f64,
-    el: f64,
-    azel_units: String,
-}
-
-async fn solar_azel( 
-    sl_mutex: Arc<Mutex<spice::SpiceLock>>,
-    payload: &CadreSolarAzAlRequest,
-    ) -> CadreSolarAzAlResponse
-{
-    let lock = sl_mutex.lock().unwrap();
-    let time = get_time(&payload.t);
-
-    let mut radius = [0.0, 0.0, 0.0];
-
-    unsafe{
-        //TODO bodvrd_c should not borrow mutable strings here - can we upstream a fix?
-        let mut out_dim: i32 = 0;
-        let out_dim_p = &mut out_dim as *mut i32;
-        spice::c::bodvrd_c(
-            cstr!("MOON"),
-            cstr!("RADII"),
-            3, 
-            out_dim_p, 
-            radius.as_mut_ptr());
-    }
-
-    let re = radius[0];
-    println!("re: {}", re);
-    let et = lock.str2et(time.as_str());
-    println!("et: {}", et);
-    let flat = radius[0] - radius[2];
-    let flat = flat / radius[0];
-
-    //did they use radians?
-    let use_radians = match payload.radians{
-        Some(r) => r,
-        None => false,
+    let res = moontime::solar_azel(sl_mutex, time.t, pos);
+    let res = match units{
+        UnitSpecifier::Degrees => res.to_degrees(),
+        UnitSpecifier::Radians => res,
     };
 
-    let pos = match (payload.pos, use_radians){
-        (Some(p), true) => p,
-        (Some(p), false) => LatLonAlt{lat:p.lat.to_radians(), lon:p.lon.to_radians(), alt:p.alt},
-        (None, _) => LatLonAlt{lat:CADRE_LAT_RAD, lon:CADRE_LON_RAD, alt:0.0},
-    };
-
-    println!("pos: {}", serde_json::to_string(&pos).unwrap_or("err".to_string()));
-    let mut rect_coord = lock.georec(pos.lon, pos.lat, pos.alt, re, flat);
-    println!("rect_coord: {:?}", rect_coord);
-    let mut azlsta = [0.0;6];
-    let mut lt = 0.0;
-
-    unsafe{
-
-        spice::c::azlcpo_c(
-            cstr!("ELLIPSOID"),
-            cstr!("SUN"),
-            et,
-            cstr!("NONE"), //TODO: provide aberration correction
-            spice::c::SPICETRUE as i32,
-            spice::c::SPICETRUE as i32,
-            rect_coord.as_mut_ptr(),
-            cstr!("MOON"),
-            cstr!("MOON_ME_DE440_ME421"),
-            azlsta.as_mut_ptr(),
-            &mut lt
-            );
-    }
-
-    println!("azlsta: {:?} lt: {:?}", azlsta, lt);
-    let range = azlsta[0];
-    let azimuth = azlsta[1];
-    let elevation = azlsta[2];
-    println!("range: {} azimuth: {} elevation: {} in degrees", 
-             range, 
-             azimuth.to_degrees(),
-             elevation.to_degrees());
-    println!("range: {} azimuth: {} elevation: {} in radians", 
-             range, 
-             azimuth,
-             elevation);
-
-    CadreSolarAzAlResponse{
-        r:range, 
-        az:azimuth,
-        el:elevation,
-        azel_units: "radians".to_string(),
-    }
+    Ok(moontime::format_res(res, format))
 }
 
 #[allow(dead_code)]
 async fn cadre_get_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(q):Query<CadreSolarAzAlRequest> ,
-    Json(b): Json<CadreSolarAzAlRequest>,
+    Query(time): Query<DateTime>,
+    Query(format): Query<FormatSpecifier>,
+    Query(units): Query<UnitSpecifier>,
     ) -> Result<String, ()>
 {
-    println!("solar_azel: {:?}", q);
-    println!("solar_azel: {}", serde_json::to_string(&q).unwrap());
 
-    let input = 
-        CadreSolarAzAlRequest{
-            f: q.f.or(b.f),
-            t: q.t.or(b.t),
-            pos: q.pos.or(b.pos),
+    let pos = Position::cadre();
+    let res = moontime::solar_azel(sl_mutex, time.t, pos);
+    let res = match units{
+        UnitSpecifier::Degrees => res.to_degrees(),
+        UnitSpecifier::Radians => res,
     };
 
-    let CadreSolarAzAlResponse{r:range, az:azimuth, el:elevation} = solar_azel(sl_mutex, &input).await;
-
-    let response = match input.f{
-        Some(RetFormat::Json) => {
-            let er = CadreSolarAzAlResponse{
-                r:range.to_radians(),
-                az:azimuth.to_radians(), 
-                el:elevation.to_radians()
-            };
-            serde_json::to_string(&er).unwrap()
-        },
-        None => {format!("{} {} {}", range, azimuth, elevation)},
-    };
-    Ok(response)
+    Ok(moontime::format_res(res, format))
 }
 
