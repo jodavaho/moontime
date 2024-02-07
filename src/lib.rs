@@ -9,6 +9,21 @@ use spice::{
     SpiceLock,
 };
 
+use time::{
+    OffsetDateTime,
+    format_description::well_known::Rfc3339,
+};
+
+fn to_cspice_string(t : OffsetDateTime) -> String {
+    let format=Rfc3339;
+    t.format(&format).unwrap()
+}
+
+pub fn get_et(sl_mutex: Arc<Mutex<SpiceLock>>, t: types::DateTime) -> f64 {
+    let lock = sl_mutex.lock().unwrap();
+    let dt = to_cspice_string(t.t);
+    lock.str2et(dt.as_str())
+}
 #[allow(dead_code)]
 pub fn solar_time(
     sl_mutex: Arc<Mutex<SpiceLock>>,
@@ -21,7 +36,7 @@ pub fn solar_time(
 
     let lon = pos.to_radians().pos.lon;
 
-    let dt = t.to_string();
+    let dt = to_cspice_string(t.t);
     let et:f64 = lock.str2et(dt.as_str());
 
     println!("et: {}", et);
@@ -70,12 +85,12 @@ pub fn solar_time(
 #[allow(dead_code)]
 pub fn solar_azel( 
     sl_mutex: Arc<Mutex<SpiceLock>>,
-    time : time::OffsetDateTime,
+    time : types::DateTime,
     pos: types::Position,
     ) -> types::RAzEl
 {
     let lock = sl_mutex.lock().unwrap();
-    let time = time.to_string();
+    let time = to_cspice_string(time.t);
 
     let mut radius = [0.0, 0.0, 0.0];
 

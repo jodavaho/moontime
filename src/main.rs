@@ -130,10 +130,8 @@ async fn main() -> Result<(), Error>
         )
          -> Result<String, ()>
 {
-    let lock = sl_mutex.lock().unwrap();
-    let timestr = t.to_string();
-    let et:f64 = lock.str2et(timestr.as_str());
-    Ok(moontime::format_res(et,f.f))
+    let res = moontime::get_et(sl_mutex, t);
+    Ok(moontime::format_res(res,f.f))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -208,7 +206,7 @@ async fn cadre_post_solar_azel(
     let units = body.units.unwrap_or_default();
     let pos = body.pos.unwrap_or_default();
 
-    let res = moontime::solar_azel(sl_mutex, time.t, pos);
+    let res = moontime::solar_azel(sl_mutex, time, pos);
     let res = match units{
         UnitSpecifier::Degrees => res.to_degrees(),
         UnitSpecifier::Radians => res,
@@ -227,7 +225,7 @@ async fn cadre_get_solar_azel(
 {
 
     let pos = Position::cadre();
-    let res = moontime::solar_azel(sl_mutex, time.t, pos);
+    let res = moontime::solar_azel(sl_mutex, time, pos);
     let res = match units{
         UnitSpecifier::Degrees => res.to_degrees(),
         UnitSpecifier::Radians => res,
