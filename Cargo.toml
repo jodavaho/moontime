@@ -15,8 +15,8 @@ tokio = { version = "1.36.0", features = ["rt", "rt-multi-thread", "macros"] }
 lambda_http = "0.9.2"
 tracing-subscriber = "0.3.18"
 tracing = "0.1.40"
-rstest = "0.18.2"
 
 [profile.release]
 strip = true
 lto = true
+

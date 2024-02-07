@@ -18,8 +18,11 @@ use chrono::Utc;
 use axum::{
     routing::get,
     routing::post,
-    extract::State,
-    extract::Query,
+    extract::{
+        State,
+        Query,
+        Json,
+    },
     Router,
 };
 use lambda_http::{
@@ -70,7 +73,8 @@ async fn main() -> Result<(), Error>
     let sl = SpiceLock::try_acquire().unwrap();
     sl.furnsh("data/latest_leapseconds.tls");
     //sl.furnsh("data/earth_fixed.tf");
-    sl.furnsh("data/de440.bsp");
+    //sl.furnsh("data/de440.bsp");
+    sl.furnsh("data/de440s.bsp");
     //sl.furnsh("data/moon_080317.tf");
     //sl.furnsh("data/moon_assoc_me.tf");
     //sl.furnsh("data/moon_assoc_pa.tf");
@@ -113,7 +117,7 @@ async fn main() -> Result<(), Error>
                 Ok(())
             },
             Err(e) => {
-                eprintln!("Error starting server: {}", e);
+                println!("Error starting server: {}", e);
                 Err(Error::from(e))
             }
         }
@@ -129,20 +133,19 @@ enum RetFormat{
 }
 
 #[allow(dead_code)]
-fn get_time(t:Option<String>) -> String{
+fn get_time(t:&Option<String>) -> String{
 
     if t.is_none(){
         return Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     }
     println!("get_time t: {:?}", t);
 
-    //match t.unwrap().parse::<chrono::DateTime<chrono::Utc>>(){
-    match chrono::DateTime::parse_from_rfc3339(t.unwrap().as_str()){
+    match chrono::DateTime::parse_from_rfc3339(t.clone().unwrap().as_str()){
         Ok(dt) => {
             dt.format("%Y-%m-%dT%H:%M:%S").to_string()
         },
         Err(e) => {
-            eprintln!(">>Error parsing time: {}", e);
+            println!(">>Error parsing time: {}", e);
             Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
         }
     }
@@ -176,7 +179,7 @@ struct EtResponse
 
     let lock = sl_mutex.lock().unwrap();
 
-    let dt = get_time(q.t); 
+    let dt = get_time(&q.t); 
 
     let et:f64 = lock.str2et(dt.as_str());
     println!("et: {}", et);
@@ -212,7 +215,7 @@ async fn cadre_get_solar_time(
     println!("solar_time: {:?}", q);
     let lock = sl_mutex.lock().unwrap();
 
-    let dt = get_time(q.t); 
+    let dt = get_time(&q.t); 
     let et:f64 = lock.str2et(dt.as_str());
     let result:String;
     unsafe
@@ -248,7 +251,7 @@ async fn cadre_get_solar_time(
             );
         let time = CStr::from_ptr(time_c.as_ptr()).to_str().unwrap();
         let ampm = CStr::from_ptr(ampm_c.as_ptr()).to_str().unwrap();
-        eprintln!("solar time: {} {}", time, ampm);
+        println!("solar time: {} {}", time, ampm);
         //cleanup
         result = format!("{}", ampm);
     }
@@ -262,7 +265,7 @@ async fn cadre_get_solar_time(
 
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Copy,Clone)]
 struct LatLonAlt{
     lat: f64,
     lon: f64,
@@ -274,6 +277,7 @@ struct CadreSolarAzAlRequest
 {
     f: Option<RetFormat>,
     t: Option<String>,
+    radians: Option<bool>,
     pos: Option<LatLonAlt>,
 }
 
@@ -283,16 +287,16 @@ struct CadreSolarAzAlResponse
     r: f64,
     az: f64,
     el: f64,
+    azel_units: String,
 }
 
-#[allow(dead_code)]
-async fn cadre_get_solar_azel( 
-    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(q):Query<CadreSolarAzAlRequest> ,
-    ) -> Result<String, ()>
+async fn solar_azel( 
+    sl_mutex: Arc<Mutex<spice::SpiceLock>>,
+    payload: &CadreSolarAzAlRequest,
+    ) -> CadreSolarAzAlResponse
 {
     let lock = sl_mutex.lock().unwrap();
-    let time = get_time(q.t);
+    let time = get_time(&payload.t);
 
     let mut radius = [0.0, 0.0, 0.0];
 
@@ -315,12 +319,19 @@ async fn cadre_get_solar_azel(
     let flat = radius[0] - radius[2];
     let flat = flat / radius[0];
 
-    let pos = match q.pos{
-        Some(p) => p,
-        None => LatLonAlt{lat: CADRE_LAT_RAD, lon: CADRE_LON_RAD, alt: 0.0},
+    //did they use radians?
+    let use_radians = match payload.radians{
+        Some(r) => r,
+        None => false,
     };
 
-    println!("pos: {:?}", pos);
+    let pos = match (payload.pos, use_radians){
+        (Some(p), true) => p,
+        (Some(p), false) => LatLonAlt{lat:p.lat.to_radians(), lon:p.lon.to_radians(), alt:p.alt},
+        (None, _) => LatLonAlt{lat:CADRE_LAT_RAD, lon:CADRE_LON_RAD, alt:0.0},
+    };
+
+    println!("pos: {}", serde_json::to_string(&pos).unwrap_or("err".to_string()));
     let mut rect_coord = lock.georec(pos.lon, pos.lat, pos.alt, re, flat);
     println!("rect_coord: {:?}", rect_coord);
     let mut azlsta = [0.0;6];
@@ -347,17 +358,48 @@ async fn cadre_get_solar_azel(
     let range = azlsta[0];
     let azimuth = azlsta[1];
     let elevation = azlsta[2];
-    println!("range: {} azimuth: {} elevation: {}", 
+    println!("range: {} azimuth: {} elevation: {} in degrees", 
              range, 
              azimuth.to_degrees(),
              elevation.to_degrees());
+    println!("range: {} azimuth: {} elevation: {} in radians", 
+             range, 
+             azimuth,
+             elevation);
 
-    let response = match q.f{
+    CadreSolarAzAlResponse{
+        r:range, 
+        az:azimuth,
+        el:elevation,
+        azel_units: "radians".to_string(),
+    }
+}
+
+#[allow(dead_code)]
+async fn cadre_get_solar_azel( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(q):Query<CadreSolarAzAlRequest> ,
+    Json(b): Json<CadreSolarAzAlRequest>,
+    ) -> Result<String, ()>
+{
+    println!("solar_azel: {:?}", q);
+    println!("solar_azel: {}", serde_json::to_string(&q).unwrap());
+
+    let input = 
+        CadreSolarAzAlRequest{
+            f: q.f.or(b.f),
+            t: q.t.or(b.t),
+            pos: q.pos.or(b.pos),
+    };
+
+    let CadreSolarAzAlResponse{r:range, az:azimuth, el:elevation} = solar_azel(sl_mutex, &input).await;
+
+    let response = match input.f{
         Some(RetFormat::Json) => {
             let er = CadreSolarAzAlResponse{
-                r:range, 
-                az:azimuth, 
-                el:elevation
+                r:range.to_radians(),
+                az:azimuth.to_radians(), 
+                el:elevation.to_radians()
             };
             serde_json::to_string(&er).unwrap()
         },
