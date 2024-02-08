@@ -27,15 +27,11 @@ pub const README:&str="https://api.jodavaho.io/s
 
         OUPUT example: 147250710.53859484 1.604846196990565 0.0788116644999063
 
-        QUERY PARAMETERS:
-        * t = optional time. See Input Parameter Information for more information.
-        * f = optional format of the response. See Output Parameter Information for more information.
-        
-        BODY PARAMETERS:
+        QUERY | BODY PARAMETERS:
         * t = optional time. See Input Parameter Information for more information.
         * f = optional format of the response. See Output Parameter Information for more information.
         * u = optional 'units' specification. See Output Parameter Information for more information.
-
+        
     /moon/solartime - returns the solar time at present, given a position on the moon's surface.
 
         OUPUT example: '02:48 AM'
@@ -49,19 +45,14 @@ pub const README:&str="https://api.jodavaho.io/s
     
         Currently, only 'azel' is supported.
 
-        OUPUT example: 147250710.53859484 1.604846196990565 0.0788116644999063
+        OUPUT example: r: 147250710.53859484 az: 1.604846196990565 el: 0.0788116644999063 u: radians
 
-        QUERY PARAMETERS:
-        * pos = required position. See Input Parameter Information for more information.
-        * t = optional time. See Input Parameter Information for more information.
-        * f = optional format of the response. See Output Parameter Information for more information.
-        
-        BODY PARAMETERS:
+        QUERY | BODY PARAMETERS:
         * pos = required position. See Input Parameter Information for more information.
         * t = optional time. See Input Parameter Information for more information.
         * f = optional format of the response. See Output Parameter Information for more information.
         * u = optional 'units' specification. See Output Parameter Information for more information.
-
+        
     NOTE - all endpoints support methods GET and POST. 
 
         curl 'https://api.jodavaho.io/s/et?t=2021-10-01T12%3A00%3A00.00%2B00%3A00'
@@ -98,6 +89,6 @@ pub const README:&str="https://api.jodavaho.io/s
     * https://naif.jpl.nasa.gov/naif/webgeocalc.html
     * https://ssd.jpl.nasa.gov/horizons/
 
-    We dedicate these hours to the advancement of understanding. We thank humanity for this
-    opportunity. May our children find use of our work.
+We dedicate these hours to the advancement of understanding. We thank humanity for this
+opportunity. May our children find use of our work.
 ";
