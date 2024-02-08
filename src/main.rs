@@ -32,7 +32,12 @@ use lambda_http::{
 
 async fn get_readme( ) -> Result<String, String>
 {
-    Ok(readme::README.to_string())
+    Ok( format!("\nVersion: {}\nAuthor: {}\nHomepage: {}\n\n{}",
+                env!("CARGO_PKG_VERSION"),
+                env!("CARGO_PKG_AUTHORS"),
+                env!("CARGO_PKG_HOMEPAGE"),
+                readme::README,
+               ))
 }
 
 #[tokio::main]
@@ -84,16 +89,21 @@ async fn main() -> Result<(), Error>
     let tlskernel = 
         Arc::new(Mutex::new(sl));
 
-    let _test_date:String = "2017-07-14T19:46:00+00:00".to_string();
-
     let app : Router
         = Router::new()
         .route("/s/et", get(get_et_time))
         .route("/s/et", post(post_et_time))
+
+        .route("/s/moon/solartime", get(moon_get_solar_time))
+        .route("/s/moon/solartime", post(moon_post_solar_time))
+        .route("/s/moon/sun/azel", get(moon_get_solar_azel))
+        .route("/s/moon/sun/azel", post(moon_post_solar_azel))
+
         .route("/s/cadre/solartime", get(cadre_get_solar_time))
         .route("/s/cadre/solartime", post(cadre_post_solar_time))
         .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
         .route("/s/cadre/sun/azel", post(cadre_post_solar_azel))
+
         //.route("/cadre/daylighthours", get(get_daylight_hours))
         .route("/s/readme", get(get_readme))
         .route("/s/readme", post(get_readme))
@@ -159,37 +169,25 @@ struct EtBody {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct PostSolarTime {
-    #[serde(default = "default_format")]
-    f: FormatSpecifier,
+struct MoonSolarTime {
     #[serde(with = "default_datetime_standard", default = "default_datetime")]
     t: DateTime,
-    #[serde(default = "default_position")]
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
     p: Position,
 }
-async fn cadre_post_solar_time( 
+async fn moon_post_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Json(PostSolarTime{f, t, p}): Json<PostSolarTime>
+    Json(MoonSolarTime{f, t, p}): Json<MoonSolarTime>
     ) -> Result<String, ()>
 {
-    println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
     let result = moontime::solar_time(sl_mutex, t, p.to_radians()).unwrap();
     Ok(moontime::format_as(result, f))
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct SolarTimeQuery{
-    #[serde(default = "default_format")]
-    f: FormatSpecifier,
-    #[serde(with = "default_datetime_standard", default = "default_datetime")]
-    t: DateTime,
-    #[serde(default = "default_position")]
-    p: Position,
-}
-
-async fn cadre_get_solar_time( 
+async fn moon_get_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(SolarTimeQuery{t, f, p}): Query<SolarTimeQuery>,
+    Query(MoonSolarTime{t, f, p}): Query<MoonSolarTime>,
     ) -> Result<String, ()>
 {
     println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
@@ -198,24 +196,22 @@ async fn cadre_get_solar_time(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct CadrePostSolarAzel {
+struct MoonPostSolarAzel {
     #[serde(with = "default_datetime_standard", default = "default_datetime")]
     t: DateTime,
     #[serde(default = "default_format")]
     f: FormatSpecifier,
     #[serde(default = "default_degrees")]
     u: UnitSpecifier,
-    #[serde(default = "default_position")]
     p: Position,
-
 }
 
-async fn cadre_post_solar_azel( 
+async fn moon_post_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Json(CadrePostSolarAzel{t, f, u, p}): Json<CadrePostSolarAzel>
+    Json(MoonPostSolarAzel{t, f, u, p}): Json<MoonPostSolarAzel>
     ) -> Result<String, ()>
 {
-
+    println!("function: moon_post_solar_azel");
     println!("time: {:?}", t);
     println!("format: {:?}", f);
     println!("units: {:?}", u);
@@ -228,23 +224,115 @@ async fn cadre_post_solar_azel(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct QuerySolarAzel {
+struct MoonQuerySolarAzel {
     #[serde(with = "default_datetime_standard", default = "default_datetime")]
     t: DateTime,
     #[serde(default = "default_format")]
     f: FormatSpecifier,
     #[serde(default = "default_degrees")]
     u: UnitSpecifier,
-    #[serde(default = "default_position")]
     p: Position,
+}
+
+async fn moon_get_solar_azel( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(MoonQuerySolarAzel{t, f, u, p}): Query<MoonQuerySolarAzel>
+    ) -> Result<String, ()>
+{
+    println!("function: moon_get_solar_azel");
+    println!("time: {:?}", t);
+    println!("format: {:?}", f);
+    println!("units: {:?}", u);
+    println!("pos: {:?}", p);
+
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    let res = moontime::translate_to(res, u);
+    let res = moontime::format_as(res, f);
+    Ok(res)
+}
+
+
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CADREPostSolarTime {
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
+    #[serde(with = "default_datetime_standard", default = "default_datetime")]
+    t: DateTime,
+}
+async fn cadre_post_solar_time( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Json(CADREPostSolarTime{f, t}): Json<CADREPostSolarTime>
+    ) -> Result<String, ()>
+{
+    let p = Position::cadre();
+    println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
+    let result = moontime::solar_time(sl_mutex, t, p.to_radians()).unwrap();
+    Ok(moontime::format_as(result, f))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CADRESolarTimeQuery{
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
+    #[serde(with = "default_datetime_standard", default = "default_datetime")]
+    t: DateTime,
+}
+
+async fn cadre_get_solar_time( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(CADRESolarTimeQuery{t, f}): Query<CADRESolarTimeQuery>,
+    ) -> Result<String, ()>
+{
+    let p = Position::cadre();
+    println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
+    let result = moontime::solar_time(sl_mutex, t, p).unwrap();
+    Ok(moontime::format_as(result, f))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CADREPostSolarAzel {
+    #[serde(with = "default_datetime_standard", default = "default_datetime")]
+    t: DateTime,
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
+    #[serde(default = "default_degrees")]
+    u: UnitSpecifier,
+}
+
+async fn cadre_post_solar_azel( 
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Json(CADREPostSolarAzel{t, f, u}): Json<CADREPostSolarAzel>
+    ) -> Result<String, ()>
+{
+    let p = Position::cadre();
+    println!("time: {:?}", t);
+    println!("format: {:?}", f);
+    println!("units: {:?}", u);
+    println!("pos: {:?}", p);
+
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    let res = moontime::translate_to(res, u);
+    let res = moontime::format_as(res, f);
+    Ok(res)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CADREQuerySolarAzel {
+    #[serde(with = "default_datetime_standard", default = "default_datetime")]
+    t: DateTime,
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
+    #[serde(default = "default_degrees")]
+    u: UnitSpecifier,
 }
 
 async fn cadre_get_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(QuerySolarAzel{t, f, u, p}): Query<QuerySolarAzel>
+    Query(CADREQuerySolarAzel{t, f, u}): Query<CADREQuerySolarAzel>
     ) -> Result<String, ()>
 {
-
+    let p = Position::cadre();
     println!("time: {:?}", t);
     println!("format: {:?}", f);
     println!("units: {:?}", u);

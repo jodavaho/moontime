@@ -2,6 +2,12 @@
 name = "moontime"
 version = "0.1.0"
 edition = "2021"
+authors = ["Joshua Vander Hook <josh@vanderhook.info>"]
+description = "A simple serverless NAIF SPICE lookup server"
+license = "MIT"
+repository = "https://github.com/jodavaho/moontime"
+homepage = "https://space.jodavaho.io"
+hosted_at = "https://api.jodavaho.io/s"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
