@@ -1,4 +1,8 @@
 mod readme;
+
+use time::OffsetDateTime;
+use chrono::Utc;
+
 use moontime::*;
 
 use std::{
@@ -24,11 +28,11 @@ use axum::{
     },
     Router,
 };
+
 use lambda_http::{
     run ,Error
 };
 
-#[allow(dead_code)]
 async fn get_readme( ) -> Result<String, String>
 {
     Ok(readme::README.to_string())
@@ -88,11 +92,13 @@ async fn main() -> Result<(), Error>
     let app : Router
         = Router::new()
         .route("/s/et", get(get_et_time))
-        .route("/s/et", post(get_et_time))
+        .route("/s/et", post(post_et_time))
         .route("/s/cadre/solartime", get(cadre_get_solar_time))
         .route("/s/cadre/solartime", post(cadre_post_solar_time))
         .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
         .route("/s/cadre/sun/azel", post(cadre_post_solar_azel))
+        .route("/echo", get(get_echo))
+        .route("/echo", post(post_echo))
         //.route("/cadre/daylighthours", get(get_daylight_hours))
         .route("/s/readme", get(get_readme))
         .route("/s/readme", post(get_readme))
@@ -118,11 +124,42 @@ async fn main() -> Result<(), Error>
     }
 
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct EchoBody {
+    msg: String,
+    #[serde(with = "time::serde::rfc3339", default = "OffsetDateTime::now_utc")]
+    t: OffsetDateTime,
+}
+
+impl Default for EchoBody{
+    fn default() -> Self {
+        EchoBody {
+            msg: "Hello, World!".to_string(),
+            t: moontime::default_datetime(),
+        }
+    }
+}
+
+async fn get_echo(
+    Query(body): Query<EchoBody>,
+    ) -> Result<String, ()>
+{
+    Ok(body.msg)
+}
+
+async fn post_echo(
+    Json(e): Json<EchoBody>
+    ) -> Result<String, ()>
+{
+    let t = e.t;
+    Ok( format!("{}", t.to_string()))
+}
+
 /// Returns the ephemeris time for the current time or a time specified in the t parameter.
 /// t is a string in RFC3339 format.
 /// f is the format of the response. If not specified, the response is a string.
 /// If f is specified as json, the response is a json object.
-#[allow(dead_code)]
     async fn get_et_time(
         State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
         Query(t): Query<DateTime>,
@@ -130,6 +167,34 @@ async fn main() -> Result<(), Error>
         )
          -> Result<String, ()>
 {
+    let res = moontime::get_et(sl_mutex, t);
+    Ok(moontime::format_res(res,f.f))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct EtBody {
+    t: Option<DateTime>,
+    f: Option<Format>,
+}
+impl Default for EtBody {
+    fn default() -> Self {
+        EtBody {
+            t: None,
+            f: None,
+        }
+    }
+}
+
+    async fn post_et_time(
+        State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+        obody: Option<Json<EtBody>>,
+        )
+         -> Result<String, ()>
+{
+    let Json(body) = obody.unwrap_or_default();
+    let t = body.t.unwrap_or_default();
+    let f = body.f.unwrap_or_default();
+
     let res = moontime::get_et(sl_mutex, t);
     Ok(moontime::format_res(res,f.f))
 }
@@ -163,7 +228,6 @@ async fn cadre_post_solar_time(
     Ok(moontime::format_res(result, f.f))
 }
 
-#[allow(dead_code)]
 async fn cadre_get_solar_time( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     t: Option<Query<DateTime>>,
@@ -179,17 +243,17 @@ async fn cadre_get_solar_time(
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CadrePostSolarAzel {
-    time: Option<DateTime>,
-    format: Option<FormatSpecifier>,
-    units: Option<UnitSpecifier>,
+    t: Option<DateTime>,
+    f: Option<FormatSpecifier>,
+    u: Option<UnitSpecifier>,
     pos: Option<Position>,
 }
 impl Default for CadrePostSolarAzel {
     fn default() -> Self {
         CadrePostSolarAzel {
-            time: None,
-            format: None,
-            units: None,
+            t: None,
+            f: None,
+            u: None,
             pos: None,
         }
     }
@@ -201,40 +265,38 @@ async fn cadre_post_solar_azel(
     ) -> Result<String, ()>
 {
     let body = obody.unwrap_or_default();
-    let time = body.time.unwrap_or_default();
-    let format = body.format.unwrap_or_default();
-    let units = body.units.unwrap_or_default();
+    let time = body.t.unwrap_or_default();
+    let format = body.f.unwrap_or_default();
+    let units = body.u.unwrap_or_default();
     let pos = body.pos.unwrap_or_default();
 
-    let res = moontime::solar_azel(sl_mutex, time, pos);
-    let res = match units{
-        UnitSpecifier::Degrees => res.to_degrees(),
-        UnitSpecifier::Radians => res,
-    };
+    println!("time: {:?}", time);
+    println!("format: {:?}", format);
+    println!("units: {:?}", units);
+    println!("pos: {:?}", pos);
 
-    Ok(moontime::format_res(res, format))
+    let res = moontime::solar_azel(sl_mutex, time, pos);
+    let res = moontime::translate_res(res, units);
+    let res = moontime::format_res(res, format);
+    Ok(res)
 }
 
-#[allow(dead_code)]
 async fn cadre_get_solar_azel( 
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     time: Option<Query<DateTime>>,
-    format: Option<Query<FormatSpecifier>>,
-    units: Option<Query<UnitSpecifier>>,
+    format: Option<Query<Format>>,
+    units: Option<Query<Units>>,
     ) -> Result<String, ()>
 {
 
     let pos = Position::default();
     let Query(time) = time.unwrap_or_default();
-    let Query(format) = format.unwrap_or_default();
-    let Query(units) = units.unwrap_or_default();
+    let format = format.unwrap_or_default().f;
+    let units = units.unwrap_or_default().u;
 
     let res = moontime::solar_azel(sl_mutex, time, pos);
-    let res = match units{
-        UnitSpecifier::Degrees => res.to_degrees(),
-        UnitSpecifier::Radians => res,
-    };
-
-    Ok(moontime::format_res(res, format))
+    let res = moontime::translate_res(res, units);
+    let res = moontime::format_res(res, format);
+    Ok(res)
 }
 

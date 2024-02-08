@@ -1,3 +1,15 @@
+#[macro_use]
+mod iotype{
+    macro_rules! default_fields {
+        ( ) => {
+            #[serde(default = "default_format")]
+            pub f: FormatSpecifier
+            #[serde(with = "time::serde::rfc3339", default = "OffsetDateTime::now_utc")]
+            pub t: OffsetDateTime,
+        };
+    }
+}
+
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use serde::{
@@ -11,6 +23,11 @@ pub const CADRE_LAT_RAD:f64 = CADRE_LAT * PI / 180.0;
 pub const CADRE_LON:f64 = -59.0;
 pub const CADRE_LON_RAD:f64 = CADRE_LON * PI / 180.0;
 
+//a degree/radian trait
+pub trait Angular{
+    fn to_radians(&self) -> Self;
+    fn to_degrees(&self) -> Self;
+}
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct DateTime {
@@ -19,7 +36,7 @@ pub struct DateTime {
 }
 
 
-fn default_datetime() -> OffsetDateTime{
+pub fn default_datetime() -> OffsetDateTime{
     OffsetDateTime::now_utc()
 }
 
@@ -135,6 +152,7 @@ pub struct Position {
     pub pos: Pos,
     pub units: UnitSpecifier
 }
+
 impl Position {
     pub fn cadre() -> Position {
         Position {
@@ -171,8 +189,8 @@ impl std::fmt::Display for Position {
     }
 }
 
-impl Position{
-    pub fn to_degrees(&self) -> Position {
+impl Angular for Position{
+    fn to_degrees(&self) -> Position {
         match self.units {
             UnitSpecifier::Degrees => return *self,
             UnitSpecifier::Radians => {
@@ -190,7 +208,7 @@ impl Position{
             }
         }
     }
-    pub fn to_radians(&self) -> Position {
+    fn to_radians(&self) -> Position {
         match self.units {
             UnitSpecifier::Radians => return *self,
             UnitSpecifier::Degrees => {
@@ -240,8 +258,8 @@ impl std::fmt::Display for RAzEl {
         write!(f, "az: {}, el: {}, r: {}, u: {}", self.az, self.el, self.r, self.units)
     }
 }
-impl RAzEl {
-    pub fn to_degrees(&self) -> RAzEl {
+impl Angular for RAzEl {
+    fn to_degrees(&self) -> RAzEl {
         match self.units {
             UnitSpecifier::Degrees => return *self,
             UnitSpecifier::Radians => {
@@ -257,7 +275,7 @@ impl RAzEl {
             }
         }
     }
-    pub fn to_radians(&self) -> RAzEl {
+    fn to_radians(&self) -> RAzEl {
         match self.units {
             UnitSpecifier::Radians => return *self,
             UnitSpecifier::Degrees => {
@@ -272,6 +290,13 @@ impl RAzEl {
                 }
             }
         }
+    }
+}
+
+pub fn translate_res<T: Serialize + Angular >(res: T, u: UnitSpecifier) -> T {
+    match u {
+        UnitSpecifier::Degrees => res.to_degrees(),
+        UnitSpecifier::Radians => res.to_radians()
     }
 }
 

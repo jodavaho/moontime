@@ -155,7 +155,7 @@ pub fn solar_azel(
         r:range, 
         az:azimuth,
         el:elevation,
-        units: types::UnitSpecifier::Degrees
+        units: types::UnitSpecifier::Radians
     }
 }
 
