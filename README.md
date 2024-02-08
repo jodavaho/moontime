@@ -30,4 +30,6 @@ build as
 
 `CSPICE_DIR=~/blah cargo build`
 
+# Running
 
+This being built on SPICE, you'll need the most up to date datasets on solar system emphemeris. The list of kernels to find is in `src/main.rs`, and you can get them via the naif website above. They should be placed in `data/`, and are not included here because they are *massive*.
