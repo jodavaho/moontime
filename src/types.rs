@@ -8,6 +8,9 @@ use serde::{
     Serialize,
     Deserialize,
 };
+
+use serde_json::json;
+
 use std::f64::consts::PI;
 
 pub fn default_datetime() -> DateTime {
@@ -223,9 +226,10 @@ pub fn translate_to<T: Serialize + Angular >(res: T, u: UnitSpecifier) -> T {
     }
 }
 
-pub fn format_as<T: Serialize + std::fmt::Display>(res: T, f: FormatSpecifier) -> String {
-    match f {
-        FormatSpecifier::Json => serde_json::to_string(&res).unwrap(),
-        FormatSpecifier::Txt => format!("{}", res)
+pub fn format_as<T: Serialize + std::fmt::Display>(res: T, f: FormatSpecifier, hint: Option<&str> ) -> String {
+    match (f, hint) {
+        (FormatSpecifier::Json, None) => json!(res).to_string(),
+        (FormatSpecifier::Json, Some(hint)) => json!({hint: res}).to_string(),
+        (FormatSpecifier::Txt,  _) => format!("{}", res)
     }
 }

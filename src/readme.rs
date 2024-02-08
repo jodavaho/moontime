@@ -87,8 +87,8 @@ pub const README:&str="https://api.jodavaho.io/s
 
 § Output Parameter Information:
 
-        * f = ['json'| None] is the format of the response. json may return extra information. If
-          not specified, the response is a string representing just the most important payload.
+        * f = ['json'| None] is the format of the response. json may return extra information. 
+          If not specified, the response is a string representing just the most important payload.
 
         * u = ['radians'|'degrees'| None] is the units of the response. If not specified, the
           response is in degrees.

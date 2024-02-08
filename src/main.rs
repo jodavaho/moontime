@@ -146,7 +146,7 @@ struct GetEtTime {
 {
     println!("t: {:?}, f: {:?}", t, f);
     let res = moontime::get_et(sl_mutex, t);
-    Ok(moontime::format_as(res,f))
+    Ok(moontime::format_as(res,f, Some("et")))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -165,7 +165,7 @@ struct EtBody {
 {
     println!("t: {:?}, f: {:?}", t, f);
     let res = moontime::get_et(sl_mutex, t);
-    Ok(moontime::format_as(res,f))
+    Ok(moontime::format_as(res,f, Some("et")))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -182,7 +182,7 @@ async fn moon_post_solar_time(
     ) -> Result<String, ()>
 {
     let result = moontime::solar_time(sl_mutex, t, p.to_radians()).unwrap();
-    Ok(moontime::format_as(result, f))
+    Ok(moontime::format_as(result, f, Some("solar time")))
 }
 
 async fn moon_get_solar_time( 
@@ -192,7 +192,7 @@ async fn moon_get_solar_time(
 {
     println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
     let result = moontime::solar_time(sl_mutex, t, p).unwrap();
-    Ok(moontime::format_as(result, f))
+    Ok(moontime::format_as(result, f, Some("solar time")))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -219,7 +219,7 @@ async fn moon_post_solar_azel(
 
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f);
+    let res = moontime::format_as(res, f, None);
     Ok(res)
 }
 
@@ -247,7 +247,7 @@ async fn moon_get_solar_azel(
 
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f);
+    let res = moontime::format_as(res, f, None);
     Ok(res)
 }
 
@@ -268,7 +268,7 @@ async fn cadre_post_solar_time(
     let p = Position::cadre();
     println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
     let result = moontime::solar_time(sl_mutex, t, p.to_radians()).unwrap();
-    Ok(moontime::format_as(result, f))
+    Ok(moontime::format_as(result, f,Some("solar time")))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -287,7 +287,7 @@ async fn cadre_get_solar_time(
     let p = Position::cadre();
     println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
     let result = moontime::solar_time(sl_mutex, t, p).unwrap();
-    Ok(moontime::format_as(result, f))
+    Ok(moontime::format_as(result, f,Some("solar time")))
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -313,7 +313,7 @@ async fn cadre_post_solar_azel(
 
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f);
+    let res = moontime::format_as(res, f, None);
     Ok(res)
 }
 
@@ -339,7 +339,7 @@ async fn cadre_get_solar_azel(
     println!("pos: {:?}", p);
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f);
+    let res = moontime::format_as(res, f, None);
     Ok(res)
 }
 
