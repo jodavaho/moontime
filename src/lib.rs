@@ -19,24 +19,27 @@ fn to_cspice_string(t : OffsetDateTime) -> String {
     t.format(&format).unwrap()
 }
 
-pub fn get_et(sl_mutex: Arc<Mutex<SpiceLock>>, t: types::DateTime) -> f64 {
+pub fn get_et(
+    sl_mutex: Arc<Mutex<SpiceLock>>, 
+    t: OffsetDateTime,
+    ) -> f64 
+{
     let lock = sl_mutex.lock().unwrap();
-    let dt = to_cspice_string(t.t);
+    let dt = to_cspice_string(t);
     lock.str2et(dt.as_str())
 }
+
 #[allow(dead_code)]
 pub fn solar_time(
     sl_mutex: Arc<Mutex<SpiceLock>>,
-    t: types::DateTime,
+    t: OffsetDateTime,
     pos: types::Position,
     )
      -> Result<String, ()>
 {
     let lock = sl_mutex.lock().unwrap();
-
-    let lon = pos.to_radians().pos.lon;
-
-    let dt = to_cspice_string(t.t);
+    let lon = pos.to_radians().lon;
+    let dt = to_cspice_string(t);
     let et:f64 = lock.str2et(dt.as_str());
 
     println!("et: {}", et);
@@ -85,12 +88,12 @@ pub fn solar_time(
 #[allow(dead_code)]
 pub fn solar_azel( 
     sl_mutex: Arc<Mutex<SpiceLock>>,
-    time : types::DateTime,
+    time : OffsetDateTime,
     pos: types::Position,
     ) -> types::RAzEl
 {
     let lock = sl_mutex.lock().unwrap();
-    let time = to_cspice_string(time.t);
+    let time = to_cspice_string(time);
 
     let mut radius = [0.0, 0.0, 0.0];
 
@@ -114,7 +117,7 @@ pub fn solar_azel(
     let flat = flat / radius[0];
 
 
-    let pos = pos.to_radians().pos;
+    let pos = pos.to_radians();
     println!("pos: {}", serde_json::to_string(&pos).unwrap_or("err".to_string()));
     let mut rect_coord = lock.georec(pos.lon, pos.lat, pos.alt, re, flat);
     println!("rect_coord: {:?}", rect_coord);
