@@ -1,15 +1,13 @@
 [package]
 name = "moontime"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
-authors = ["Joshua Vander Hook <josh@vanderhook.info>"]
-description = "A simple serverless NAIF SPICE lookup server"
+authors = ["Joshua Vander Hook <hello@jodavaho.io>"]
+description = "A simple cli and serverless NAIF SPICE lookup for a few space missions"
 license = "MIT"
 repository = "https://github.com/jodavaho/moontime"
 homepage = "https://space.jodavaho.io"
 hosted_at = "https://api.jodavaho.io/s"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 chrono = "0.4.31"
