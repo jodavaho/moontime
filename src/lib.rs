@@ -40,10 +40,11 @@ pub fn solar_time(
     let lock = sl_mutex.lock().unwrap();
     println!("lock");
     let dt = to_cspice_string(t);
+    println!("dt: {}", dt);
     let et = lock.str2et(dt.as_str());
     println!("et: {}", et);
     let body_code = 301;
-    let lon = pos.lon.to_degrees();
+    let lon = pos.lon.to_radians();
     let lon_type = "PLANETOCENTRIC";
 
     println!("et: {}", et);
