@@ -11,7 +11,9 @@ hosted_at = "https://api.jodavaho.io/s"
 
 [dependencies]
 chrono = "0.4.31"
-rust-spice = { version = "0.7.8", features = ["lock"] }
+# use local rust-spice
+ rust-spice = { path = "/home/hook/ws/rust-spice/rust-spice", features = ["lock"] }
+#rust-spice = { version = "0.7.8", features = ["lock"] }
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = { version = "1.0.111", features = ["float_roundtrip", "arbitrary_precision"] }
 axum = "0.7.4"

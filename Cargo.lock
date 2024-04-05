@@ -1230,8 +1230,6 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "rust-spice"
 version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51d52211133773c44f68ddc5fbbfecdaf24d214b84acbd9b8c1e0b099dad2271"
 dependencies = [
  "approx",
  "cspice-sys",
@@ -1250,8 +1248,6 @@ dependencies = [
 [[package]]
 name = "rust-spice-derive"
 version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6447921ee19982d6a94878472c1cfc2b4cdf10b112b1a08f5b01e4eb7b5dbbc7"
 dependencies = [
  "proc-macro2",
  "quote",

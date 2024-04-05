@@ -29,7 +29,6 @@ pub fn get_et(
     lock.str2et(dt.as_str())
 }
 
-#[allow(dead_code)]
 pub fn solar_time(
     sl_mutex: Arc<Mutex<SpiceLock>>,
     t: OffsetDateTime,
@@ -37,52 +36,20 @@ pub fn solar_time(
     )
      -> Result<String, ()>
 {
+    println!("solar_time");
     let lock = sl_mutex.lock().unwrap();
-    let lon = pos.to_radians().lon;
+    println!("lock");
     let dt = to_cspice_string(t);
-    let et:f64 = lock.str2et(dt.as_str());
+    let et = lock.str2et(dt.as_str());
+    println!("et: {}", et);
+    let body_code = 301;
+    let lon = pos.lon.to_degrees();
+    let lon_type = "PLANETOCENTRIC";
 
     println!("et: {}", et);
-    println!("lon: {}", lon);
-    let result:String;
-    unsafe
-    {
-        let et_c = et as f64;
-        let body_c = 301 as i32;
-        let lon_c = lon as f64;
-        let type_of_coord = "PLANETOCENTRIC"; 
-        let type_c = cstr!(type_of_coord);
-        const TIMLEN_C:i32 = 256 as i32;
-        const AMPMLEN_C:i32 = 256 as i32;
-        let mut hr_c:i32 = 0;
-        let hr_cp = &mut hr_c as *mut i32;
-        let mut mn_c:i32 = 0;
-        let mn_cp = &mut mn_c as *mut i32;
-        let mut sc_c:i32 = 0;
-        let sc_cp = &mut sc_c as *mut i32;
-        //make a buffer for the time string
-        let mut time_c = [0i8; TIMLEN_C as usize];
-        let mut ampm_c = [0i8; AMPMLEN_C as usize];
-        spice::c::et2lst_c(
-            et_c, 
-            body_c, 
-            lon_c,
-            type_c,
-            TIMLEN_C,
-            AMPMLEN_C,
-            hr_cp,
-            mn_cp,
-            sc_cp,
-            time_c.as_mut_ptr(),
-            ampm_c.as_mut_ptr()
-            );
-        let time = CStr::from_ptr(time_c.as_ptr()).to_str().unwrap();
-        let ampm = CStr::from_ptr(ampm_c.as_ptr()).to_str().unwrap();
-        println!("solar time: {} {}", time, ampm);
-        //cleanup
-        result = format!("{}", ampm);
-    }
-    Ok(result)
+    let (_,_,_,_,ampm) = lock.et2lst(et, body_code, lon, lon_type);
+    println!("ampm: {}", ampm);
+    Ok(ampm)
 }
 
 #[allow(dead_code)]
@@ -162,3 +129,25 @@ pub fn solar_azel(
     }
 }
 
+
+#[allow(dead_code)]
+pub fn sun_path(
+    sl_mutex: Arc<Mutex<SpiceLock>>,
+    t: OffsetDateTime,
+    pos: types::Position,
+    )
+     -> Result<Vec<types::RAzEl>, ()>
+{
+    let mut razels:Vec<types::RAzEl> = Vec::new();
+    for i in -14..14 {
+        let ti = t + time::Duration::days(i);
+        let this_razel = solar_azel(sl_mutex.clone(), ti, pos);
+        razels.push(this_razel);
+    }
+    for i in -24..24 {
+        let ti = t + time::Duration::hours(2*i);
+        let this_razel = solar_azel(sl_mutex.clone(), ti, pos);
+        razels.push(this_razel);
+    }
+    Ok(razels)
+}

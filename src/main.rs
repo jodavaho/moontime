@@ -287,6 +287,7 @@ async fn cadre_get_solar_time(
     let p = Position::cadre();
     println!("t: {:?}, f: {:?}, p: {:?}", t, f, p);
     let result = moontime::solar_time(sl_mutex, t, p).unwrap();
+    println!("result: {}", result);
     Ok(moontime::format_as(result, f,Some("solar time")))
 }
 
@@ -343,3 +344,27 @@ async fn cadre_get_solar_azel(
     Ok(res)
 }
 
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CADREQuerySunPath{
+    #[serde(with = "default_datetime_standard", default = "default_datetime")]
+    t: DateTime,
+    #[serde(default = "default_format")]
+    f: FormatSpecifier,
+    #[serde(default = "default_degrees")]
+    u: UnitSpecifier,
+}
+
+async fn cadre_get_sun_path(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Query(CADREQuerySunPath{t, f, u}): Query<CADREQuerySunPath>
+    ) -> Result<Vec<RAzEl>, ()>
+{
+    let p = Position::cadre();
+    println!("time: {:?}", t);
+    println!("format: {:?}", f);
+    println!("units: {:?}", u);
+    println!("pos: {:?}", p);
+    let res = moontime::sun_path(sl_mutex, t, p);
+    res
+}
