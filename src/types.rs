@@ -370,6 +370,51 @@ impl From<PositionFull> for RAzEl {
     }
 }
 
+impl From<RAzEl> for PositionXYZ {
+    fn from(azel: RAzEl) -> Self {
+        let azel_rad = azel.to_radians();
+        let mut rect = [0.0; 3];
+        unsafe {
+            spice::c::latrec_c(azel_rad.r, azel_rad.az, azel_rad.el, rect.as_mut_ptr());
+        }
+        PositionXYZ {
+            x: rect[0],
+            y: rect[1],
+            z: rect[2],
+        }
+    }
+}
+
+impl From<RAzEl> for PositionSpherical {
+    fn from(azel: RAzEl) -> Self {
+        PositionSpherical {
+            r: azel.r,
+            lon: azel.az,
+            lat: azel.el,
+            units: azel.units,
+        }
+    }
+}
+
+impl From<RAzEl> for PositionFull {
+    fn from(azel: RAzEl) -> Self {
+        let azel_rad = azel.to_radians();
+        let mut rect = [0.0; 3];
+        unsafe {
+            spice::c::latrec_c(azel_rad.r, azel_rad.az, azel_rad.el, rect.as_mut_ptr());
+        }
+        PositionFull {
+            x: rect[0],
+            y: rect[1],
+            z: rect[2],
+            r: azel.r,
+            lon: azel.az,
+            lat: azel.el,
+            units: azel.units,
+        }
+    }
+}
+
 pub fn format_as<T: Serialize + std::fmt::Display>(
     res: T,
     f: FormatSpecifier,
