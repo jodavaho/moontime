@@ -222,3 +222,138 @@ pub fn earth_position_ecliptic(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex, OnceLock};
+    use spice::SpiceLock;
+    use time::{Month, OffsetDateTime, Time, Date};
+
+    static SPICE_LOCK: OnceLock<Arc<Mutex<SpiceLock>>> = OnceLock::new();
+
+    fn setup_spice() -> Arc<Mutex<SpiceLock>> {
+        SPICE_LOCK.get_or_init(|| {
+            let sl = SpiceLock::try_acquire().unwrap();
+            sl.furnsh("data/latest_leapseconds.tls");
+            sl.furnsh("data/de440s.bsp");
+            sl.furnsh("data/moon_pa_de440_200625.bpc");
+            sl.furnsh("data/moon_de440_200625.tf");
+            sl.furnsh("data/pck00010.tpc");
+            Arc::new(Mutex::new(sl))
+        }).clone()
+    }
+
+    fn test_datetime() -> OffsetDateTime {
+        let date = Date::from_calendar_date(2024, Month::June, 1).unwrap();
+        let time = Time::from_hms(12, 0, 0).unwrap();
+        OffsetDateTime::new_utc(date, time)
+    }
+
+    #[test]
+    fn test_get_et_exact() {
+        let sl = setup_spice();
+        let t = test_datetime();
+        let et = get_et(sl.clone(), t);
+        assert_eq!(et, 770515269.1848872);
+    }
+
+    #[test]
+    fn test_cadre_solar_azel_exact() {
+        let sl = setup_spice();
+        let t = test_datetime();
+        let pos = Position::cadre();
+        let azel = solar_azel(sl.clone(), t, pos);
+
+        assert_eq!(azel.az, 1.6349707743817739);
+        assert_eq!(azel.el, 0.6110381109126339);
+        assert_eq!(azel.r, 151559808.5801367);
+        assert_eq!(azel.units, UnitSpecifier::Radians);
+    }
+
+    #[test]
+    fn test_earth_position_from_sun_exact() {
+        let sl = setup_spice();
+        let t = test_datetime();
+        let pos = earth_position_from_sun(sl.clone(), t);
+
+        assert_eq!(pos.x, 145931759.53936464);
+        assert_eq!(pos.y, 41434333.28598916);
+        assert_eq!(pos.z, -1534006.420671329);
+        assert_eq!(pos.r, 151707730.82743025);
+        assert_eq!(pos.lon, 0.2766488084928851);
+        assert_eq!(pos.lat, -0.010111762624525013);
+        assert_eq!(pos.units, UnitSpecifier::Radians);
+    }
+
+    #[test]
+    fn test_earth_position_ecliptic_exact() {
+        let sl = setup_spice();
+        let t = test_datetime();
+        let pos = earth_position_ecliptic(sl.clone(), t);
+
+        assert_eq!(pos.x, -49025028.037208125);
+        assert_eq!(pos.y, -143568040.1350961);
+        assert_eq!(pos.z, 8398.000590592623);
+        assert_eq!(pos.r, 151707730.82743022);
+        assert_eq!(pos.lon, -1.8998572176894484);
+        assert_eq!(pos.lat, 0.00005535644458642995);
+        assert_eq!(pos.units, UnitSpecifier::Radians);
+    }
+
+    #[test]
+    fn test_position_full_to_xyz_conversion() {
+        let full = PositionFull {
+            x: 145931759.53936464,
+            y: 41434333.28598916,
+            z: -1534006.420671329,
+            r: 151707730.82743025,
+            lon: 0.2766488084928851,
+            lat: -0.010111762624525013,
+            units: UnitSpecifier::Radians,
+        };
+
+        let xyz: PositionXYZ = full.into();
+        assert_eq!(xyz.x, 145931759.53936464);
+        assert_eq!(xyz.y, 41434333.28598916);
+        assert_eq!(xyz.z, -1534006.420671329);
+    }
+
+    #[test]
+    fn test_position_full_to_spherical_conversion() {
+        let full = PositionFull {
+            x: -49025028.037208125,
+            y: -143568040.1350961,
+            z: 8398.000590592623,
+            r: 151707730.82743022,
+            lon: -1.8998572176894484,
+            lat: 0.00005535644458642995,
+            units: UnitSpecifier::Radians,
+        };
+
+        let spherical: PositionSpherical = full.into();
+        assert_eq!(spherical.r, 151707730.82743022);
+        assert_eq!(spherical.lon, -1.8998572176894484);
+        assert_eq!(spherical.lat, 0.00005535644458642995);
+        assert_eq!(spherical.units, UnitSpecifier::Radians);
+    }
+
+    #[test]
+    fn test_position_full_to_azel_conversion() {
+        let full = PositionFull {
+            x: 145931759.53936464,
+            y: 41434333.28598916,
+            z: -1534006.420671329,
+            r: 151707730.82743025,
+            lon: 0.2766488084928851,
+            lat: -0.010111762624525013,
+            units: UnitSpecifier::Radians,
+        };
+
+        let azel: RAzEl = full.into();
+        assert_eq!(azel.az, 0.2766488084928851);
+        assert_eq!(azel.el, -0.010111762624525013);
+        assert_eq!(azel.r, 151707730.82743025);
+        assert_eq!(azel.units, UnitSpecifier::Radians);
+    }
+}
+

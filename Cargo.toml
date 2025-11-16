@@ -1,6 +1,6 @@
 [package]
 name = "moontime"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 authors = ["Joshua Vander Hook <hello@jodavaho.io>"]
 description = "A simple cli and serverless NAIF SPICE lookup for a few space missions"

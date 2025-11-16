@@ -84,12 +84,16 @@ async fn main() -> Result<(), Error> {
         .route("/s/et", post(post_et_time))
         .route("/s/moon/solartime", get(moon_get_solar_time))
         .route("/s/moon/solartime", post(moon_post_solar_time))
-        .route("/s/moon/sun/azel", get(moon_get_solar_azel))
-        .route("/s/moon/sun/azel", post(moon_post_solar_azel))
+        .route("/s/moon/sun", get(moon_get_sun_azel))
+        .route("/s/moon/sun", post(moon_post_sun_azel))
+        .route("/s/moon/sun/:format", get(moon_get_sun))
+        .route("/s/moon/sun/:format", post(moon_post_sun))
         .route("/s/cadre/solartime", get(cadre_get_solar_time))
         .route("/s/cadre/solartime", post(cadre_post_solar_time))
-        .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
-        .route("/s/cadre/sun/azel", post(cadre_post_solar_azel))
+        .route("/s/cadre/sun", get(cadre_get_sun_azel))
+        .route("/s/cadre/sun", post(cadre_post_sun_azel))
+        .route("/s/cadre/sun/:format", get(cadre_get_sun))
+        .route("/s/cadre/sun/:format", post(cadre_post_sun))
         .route("/s/sun/earth", get(get_sun_earth_full))
         .route("/s/sun/earth", post(post_sun_earth_full))
         .route("/s/sun/earth/:format", get(get_sun_earth))
@@ -194,20 +198,37 @@ struct MoonPostSolarAzel {
     p: Position,
 }
 
-async fn moon_post_solar_azel(
+async fn moon_post_sun_azel(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Json(MoonPostSolarAzel { t, f, u, p }): Json<MoonPostSolarAzel>,
 ) -> Result<String, ()> {
-    println!("function: moon_post_solar_azel");
-    println!("time: {:?}", t);
-    println!("format: {:?}", f);
-    println!("units: {:?}", u);
-    println!("pos: {:?}", p);
-
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, None);
+    let res = moontime::format_as(res, f, Some("moon_sun"));
     Ok(res)
+}
+
+async fn moon_post_sun(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Json(MoonPostSolarAzel { t, f, u, p }): Json<MoonPostSolarAzel>,
+) -> Result<String, ()> {
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("moon_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("moon_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            let azel = moontime::translate_to(res, u);
+            Ok(moontime::format_as(azel, f, Some("moon_sun_azel")))
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -221,20 +242,37 @@ struct MoonQuerySolarAzel {
     p: Position,
 }
 
-async fn moon_get_solar_azel(
+async fn moon_get_sun_azel(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Query(MoonQuerySolarAzel { t, f, u, p }): Query<MoonQuerySolarAzel>,
 ) -> Result<String, ()> {
-    println!("function: moon_get_solar_azel");
-    println!("time: {:?}", t);
-    println!("format: {:?}", f);
-    println!("units: {:?}", u);
-    println!("pos: {:?}", p);
-
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, None);
+    let res = moontime::format_as(res, f, Some("moon_sun"));
     Ok(res)
+}
+
+async fn moon_get_sun(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Query(MoonQuerySolarAzel { t, f, u, p }): Query<MoonQuerySolarAzel>,
+) -> Result<String, ()> {
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("moon_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("moon_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            let azel = moontime::translate_to(res, u);
+            Ok(moontime::format_as(azel, f, Some("moon_sun_azel")))
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -282,20 +320,39 @@ struct CADREPostSolarAzel {
     u: UnitSpecifier,
 }
 
-async fn cadre_post_solar_azel(
+async fn cadre_post_sun_azel(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Json(CADREPostSolarAzel { t, f, u }): Json<CADREPostSolarAzel>,
 ) -> Result<String, ()> {
     let p = Position::cadre();
-    println!("time: {:?}", t);
-    println!("format: {:?}", f);
-    println!("units: {:?}", u);
-    println!("pos: {:?}", p);
-
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, None);
+    let res = moontime::format_as(res, f, Some("cadre_sun"));
     Ok(res)
+}
+
+async fn cadre_post_sun(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Json(CADREPostSolarAzel { t, f, u }): Json<CADREPostSolarAzel>,
+) -> Result<String, ()> {
+    let p = Position::cadre();
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("cadre_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("cadre_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            let azel = moontime::translate_to(res, u);
+            Ok(moontime::format_as(azel, f, Some("cadre_sun_azel")))
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -308,19 +365,39 @@ struct CADREQuerySolarAzel {
     u: UnitSpecifier,
 }
 
-async fn cadre_get_solar_azel(
+async fn cadre_get_sun_azel(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Query(CADREQuerySolarAzel { t, f, u }): Query<CADREQuerySolarAzel>,
 ) -> Result<String, ()> {
     let p = Position::cadre();
-    println!("time: {:?}", t);
-    println!("format: {:?}", f);
-    println!("units: {:?}", u);
-    println!("pos: {:?}", p);
     let res = moontime::solar_azel(sl_mutex, t, p);
     let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, None);
+    let res = moontime::format_as(res, f, Some("cadre_sun"));
     Ok(res)
+}
+
+async fn cadre_get_sun(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Query(CADREQuerySolarAzel { t, f, u }): Query<CADREQuerySolarAzel>,
+) -> Result<String, ()> {
+    let p = Position::cadre();
+    let res = moontime::solar_azel(sl_mutex, t, p);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("cadre_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("cadre_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            let azel = moontime::translate_to(res, u);
+            Ok(moontime::format_as(azel, f, Some("cadre_sun_azel")))
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
