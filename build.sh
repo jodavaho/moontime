@@ -1,3 +1,8 @@
+set -e
+CSPICE_DIR=/home/hook/ws/cspice/cspice cargo build --release -j8
+echo "Build succeeded!"
+echo "Making lambda ... "
+sleep 1
 CSPICE_DIR=/home/hook/ws/cspice/cspice cargo lambda build --release -j8
 ls -l -h ./target/lambda/moontime/bootstrap
 rm lambda.zip
