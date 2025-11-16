@@ -279,6 +279,86 @@ impl Angular for PositionFull {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+pub struct PositionXYZ {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+impl std::fmt::Display for PositionXYZ {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "x: {} km, y: {} km, z: {} km", self.x, self.y, self.z)
+    }
+}
+
+impl From<PositionFull> for PositionXYZ {
+    fn from(p: PositionFull) -> Self {
+        PositionXYZ {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
+pub struct PositionSpherical {
+    pub r: f64,
+    pub lon: f64,
+    pub lat: f64,
+    pub units: UnitSpecifier,
+}
+
+impl std::fmt::Display for PositionSpherical {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "r: {} km, lon: {}, lat: {}, u: {}",
+            self.r, self.lon, self.lat, self.units
+        )
+    }
+}
+
+impl Angular for PositionSpherical {
+    fn to_degrees(&self) -> PositionSpherical {
+        match self.units {
+            UnitSpecifier::Degrees => *self,
+            UnitSpecifier::Radians => PositionSpherical {
+                r: self.r,
+                lon: self.lon.to_degrees(),
+                lat: self.lat.to_degrees(),
+                units: UnitSpecifier::Degrees,
+            },
+        }
+    }
+    fn to_radians(&self) -> PositionSpherical {
+        match self.units {
+            UnitSpecifier::Radians => *self,
+            UnitSpecifier::Degrees => PositionSpherical {
+                r: self.r,
+                lon: self.lon.to_radians(),
+                lat: self.lat.to_radians(),
+                units: UnitSpecifier::Radians,
+            },
+        }
+    }
+    fn units(&self) -> UnitSpecifier {
+        self.units
+    }
+}
+
+impl From<PositionFull> for PositionSpherical {
+    fn from(p: PositionFull) -> Self {
+        PositionSpherical {
+            r: p.r,
+            lon: p.lon,
+            lat: p.lat,
+            units: p.units,
+        }
+    }
+}
+
 pub fn format_as<T: Serialize + std::fmt::Display>(
     res: T,
     f: FormatSpecifier,

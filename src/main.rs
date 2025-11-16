@@ -8,13 +8,21 @@ use std::{
 };
 
 use axum::{
-    extract::{Json, Query, State},
+    extract::{Json, Path, Query, State},
     routing::get,
     routing::post,
     Router,
 };
 use serde::{Deserialize, Serialize};
 use spice::SpiceLock;
+
+#[derive(Debug, Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum CoordFormat {
+    Xyz,
+    Spherical,
+    Azel,
+}
 
 use lambda_http::{run, Error};
 
@@ -82,12 +90,14 @@ async fn main() -> Result<(), Error> {
         .route("/s/cadre/solartime", post(cadre_post_solar_time))
         .route("/s/cadre/sun/azel", get(cadre_get_solar_azel))
         .route("/s/cadre/sun/azel", post(cadre_post_solar_azel))
-        .route("/s/sun/earth", get(get_sun_earth))
-        .route("/s/sun/earth", post(post_sun_earth))
-        .route("/s/ecliptic/earth", get(get_ecliptic_earth))
-        .route("/s/ecliptic/earth", post(post_ecliptic_earth))
-        .route("/s/galaxy/earth", get(get_galaxy_earth))
-        .route("/s/galaxy/earth", post(post_galaxy_earth))
+        .route("/s/sun/earth", get(get_sun_earth_full))
+        .route("/s/sun/earth", post(post_sun_earth_full))
+        .route("/s/sun/earth/:format", get(get_sun_earth))
+        .route("/s/sun/earth/:format", post(post_sun_earth))
+        .route("/s/ecliptic/earth", get(get_ecliptic_earth_full))
+        .route("/s/ecliptic/earth", post(post_ecliptic_earth_full))
+        .route("/s/ecliptic/earth/:format", get(get_ecliptic_earth))
+        .route("/s/ecliptic/earth/:format", post(post_ecliptic_earth))
         //.route("/cadre/daylighthours", get(get_daylight_hours))
         .route("/s/readme", get(get_readme))
         .route("/s/readme", post(get_readme))
@@ -323,7 +333,7 @@ struct SunEarthQuery {
     u: UnitSpecifier,
 }
 
-async fn get_sun_earth(
+async fn get_sun_earth_full(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Query(SunEarthQuery { t, f, u }): Query<SunEarthQuery>,
 ) -> Result<String, ()> {
@@ -331,6 +341,28 @@ async fn get_sun_earth(
     let res = moontime::translate_to(res, u);
     let res = moontime::format_as(res, f, Some("earth_from_sun"));
     Ok(res)
+}
+
+async fn get_sun_earth(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Query(SunEarthQuery { t, f, u }): Query<SunEarthQuery>,
+) -> Result<String, ()> {
+    let res = moontime::earth_position_from_sun(sl_mutex, t);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("earth_from_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("earth_from_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            Err(())
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -343,7 +375,7 @@ struct SunEarthPost {
     u: UnitSpecifier,
 }
 
-async fn post_sun_earth(
+async fn post_sun_earth_full(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Json(SunEarthPost { t, f, u }): Json<SunEarthPost>,
 ) -> Result<String, ()> {
@@ -351,6 +383,28 @@ async fn post_sun_earth(
     let res = moontime::translate_to(res, u);
     let res = moontime::format_as(res, f, Some("earth_from_sun"));
     Ok(res)
+}
+
+async fn post_sun_earth(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Json(SunEarthPost { t, f, u }): Json<SunEarthPost>,
+) -> Result<String, ()> {
+    let res = moontime::earth_position_from_sun(sl_mutex, t);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("earth_from_sun_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("earth_from_sun_spherical")))
+        }
+        CoordFormat::Azel => {
+            Err(())
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -363,7 +417,7 @@ struct EclipticEarthQuery {
     u: UnitSpecifier,
 }
 
-async fn get_ecliptic_earth(
+async fn get_ecliptic_earth_full(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Query(EclipticEarthQuery { t, f, u }): Query<EclipticEarthQuery>,
 ) -> Result<String, ()> {
@@ -371,6 +425,28 @@ async fn get_ecliptic_earth(
     let res = moontime::translate_to(res, u);
     let res = moontime::format_as(res, f, Some("earth_ecliptic"));
     Ok(res)
+}
+
+async fn get_ecliptic_earth(
+    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
+    Path(coord_format): Path<CoordFormat>,
+    Query(EclipticEarthQuery { t, f, u }): Query<EclipticEarthQuery>,
+) -> Result<String, ()> {
+    let res = moontime::earth_position_ecliptic(sl_mutex, t);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("earth_ecliptic_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("earth_ecliptic_spherical")))
+        }
+        CoordFormat::Azel => {
+            Err(())
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -383,7 +459,7 @@ struct EclipticEarthPost {
     u: UnitSpecifier,
 }
 
-async fn post_ecliptic_earth(
+async fn post_ecliptic_earth_full(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
     Json(EclipticEarthPost { t, f, u }): Json<EclipticEarthPost>,
 ) -> Result<String, ()> {
@@ -393,42 +469,25 @@ async fn post_ecliptic_earth(
     Ok(res)
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct GalaxyEarthQuery {
-    #[serde(with = "default_datetime_standard", default = "default_datetime")]
-    t: DateTime,
-    #[serde(default = "default_format")]
-    f: FormatSpecifier,
-    #[serde(default = "default_degrees")]
-    u: UnitSpecifier,
-}
-
-async fn get_galaxy_earth(
+async fn post_ecliptic_earth(
     State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Query(GalaxyEarthQuery { t, f, u }): Query<GalaxyEarthQuery>,
+    Path(coord_format): Path<CoordFormat>,
+    Json(EclipticEarthPost { t, f, u }): Json<EclipticEarthPost>,
 ) -> Result<String, ()> {
-    let res = moontime::earth_position_galactic(sl_mutex, t);
-    let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, Some("earth_galactic"));
-    Ok(res)
+    let res = moontime::earth_position_ecliptic(sl_mutex, t);
+    match coord_format {
+        CoordFormat::Xyz => {
+            let xyz: PositionXYZ = res.into();
+            Ok(moontime::format_as(xyz, f, Some("earth_ecliptic_xyz")))
+        }
+        CoordFormat::Spherical => {
+            let spherical: PositionSpherical = res.into();
+            let spherical = moontime::translate_to(spherical, u);
+            Ok(moontime::format_as(spherical, f, Some("earth_ecliptic_spherical")))
+        }
+        CoordFormat::Azel => {
+            Err(())
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct GalaxyEarthPost {
-    #[serde(with = "default_datetime_standard", default = "default_datetime")]
-    t: DateTime,
-    #[serde(default = "default_format")]
-    f: FormatSpecifier,
-    #[serde(default = "default_degrees")]
-    u: UnitSpecifier,
-}
-
-async fn post_galaxy_earth(
-    State(sl_mutex): State<Arc<Mutex<spice::SpiceLock>>>,
-    Json(GalaxyEarthPost { t, f, u }): Json<GalaxyEarthPost>,
-) -> Result<String, ()> {
-    let res = moontime::earth_position_galactic(sl_mutex, t);
-    let res = moontime::translate_to(res, u);
-    let res = moontime::format_as(res, f, Some("earth_galactic"));
-    Ok(res)
-}
