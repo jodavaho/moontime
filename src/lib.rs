@@ -222,37 +222,3 @@ pub fn earth_position_ecliptic(
     }
 }
 
-pub fn earth_position_galactic(
-    sl_mutex: Arc<Mutex<SpiceLock>>,
-    time: OffsetDateTime,
-) -> types::PositionFull {
-    let lock = sl_mutex.lock().unwrap();
-    let time_str = to_cspice_string(time);
-    let et = lock.str2et(time_str.as_str());
-
-    // Get Earth position from Sun in GALACTIC frame (rectangular coords)
-    let (mut pos, _lt) = lock.spkpos("EARTH", et, "GALACTIC", "NONE", "SUN");
-
-    let x = pos[0];
-    let y = pos[1];
-    let z = pos[2];
-
-    // Convert rectangular to spherical (latitudinal) coordinates
-    let mut r = 0.0;
-    let mut lon = 0.0;
-    let mut lat = 0.0;
-
-    unsafe {
-        spice::c::reclat_c(pos.as_mut_ptr(), &mut r, &mut lon, &mut lat);
-    }
-
-    types::PositionFull {
-        x,
-        y,
-        z,
-        r,
-        lon,
-        lat,
-        units: types::UnitSpecifier::Radians,
-    }
-}

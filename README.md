@@ -17,10 +17,16 @@ curl https://api.jodavaho.io/s/cadre/solartime
 New: Earth's position in different reference frames:
 
 ```
-curl https://api.jodavaho.io/s/sun/earth      # Sun's rotating frame
-curl https://api.jodavaho.io/s/ecliptic/earth # Ecliptic/orbital plane
-curl https://api.jodavaho.io/s/galaxy/earth   # Galactic coordinates
+curl https://api.jodavaho.io/s/sun/earth            # Full: x,y,z,r,lon,lat
+curl https://api.jodavaho.io/s/sun/earth/xyz        # Cartesian only
+curl https://api.jodavaho.io/s/sun/earth/spherical  # Spherical only: r,lon,lat
+
+curl https://api.jodavaho.io/s/ecliptic/earth           # Full: x,y,z,r,lon,lat
+curl https://api.jodavaho.io/s/ecliptic/earth/xyz       # Cartesian only
+curl https://api.jodavaho.io/s/ecliptic/earth/spherical # Spherical only: r,lon,lat
 ```
+
+All endpoints support query parameters: t (time), f (format: json/txt), u (units: degrees/radians)
 
 And for a complete list:
 

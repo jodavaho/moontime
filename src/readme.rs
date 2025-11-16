@@ -71,7 +71,7 @@ pub const README: &str = "https://api.jodavaho.io/s
 
     /ecliptic/earth - returns Earth's orbital position
         in the solar system's ecliptic plane (ECLIPJ2000).
-        Longitude cycles 0-360° over the year.
+        Longitude cycles 0-360 over the year.
 
         OUTPUT example: 'x: 149597870.7 km, y: 0.0 km, z: 0.0 km,
         r: 149597870.7 km, lon: 102.3, lat: 0.0, u: degrees'
@@ -80,16 +80,13 @@ pub const README: &str = "https://api.jodavaho.io/s
         * f = optional format of the response.
         * u = optional 'units' specification for angles.
 
-    /galaxy/earth - returns Earth's position in galactic
-        coordinates (GALACTIC frame). Shows orientation
-        relative to Milky Way center and north pole.
+    Path variants for Earth position endpoints:
+        /sun/earth, /sun/earth/xyz, /sun/earth/spherical
+        /ecliptic/earth, /ecliptic/earth/xyz, /ecliptic/earth/spherical
 
-        OUTPUT example: 'x: 149597870.7 km, y: 0.0 km, z: 0.0 km,
-        r: 149597870.7 km, lon: 180.0, lat: -60.0, u: degrees'
-
-        * t = optional time.
-        * f = optional format of the response.
-        * u = optional 'units' specification for angles.
+        /xyz returns only Cartesian coordinates (x,y,z)
+        /spherical returns only spherical coordinates (r,lon,lat)
+        Base path returns full position (both xyz and spherical)
 
 § NOTE:
 
