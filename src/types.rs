@@ -48,7 +48,7 @@ impl Default for UnitSpecifier {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq)]
 pub enum UnitSpecifier {
     #[serde(rename = "radians")]
     Radians,
@@ -354,6 +354,17 @@ impl From<PositionFull> for PositionSpherical {
             r: p.r,
             lon: p.lon,
             lat: p.lat,
+            units: p.units,
+        }
+    }
+}
+
+impl From<PositionFull> for RAzEl {
+    fn from(p: PositionFull) -> Self {
+        RAzEl {
+            az: p.lon,
+            el: p.lat,
+            r: p.r,
             units: p.units,
         }
     }
